@@ -1,0 +1,17 @@
+{
+  "VID": "0x2E3C",
+  "PID": "0x5745",
+  "Layouts": {
+    "0x1750017": {
+      "_note": "XP75 / 75% layout.",
+      "rows": [
+        ["ESC",  "xxSK", "F1",   "F2",   "F3",   "F4",  "F5",  "F6",  "F7",  "F8",  "F9",   "F10",  "F11",  "F12",  "DEL",  "xxSK", "xxSK", "xxSK", "xxSK", "xxSK", "xxSK"],
+        ["GRV",  "1",    "2",    "3",    "4",    "5",   "6",   "7",   "8",   "9",   "0",    "MINS", "EQL",  "BSPC", "INS",  "xxSK", "xxSK", "xxSK", "xxSK", "xxSK", "xxSK"],
+        ["TAB",  "Q",    "W",    "E",    "R",    "T",   "Y",   "U",   "I",   "O",   "P",    "LBRC", "RBRC", "BSLS", "PGUP", "xxSK", "xxSK", "xxSK", "xxSK", "xxSK", "xxSK"],
+        ["CAPS", "A",    "S",    "D",    "F",    "G",   "H",   "J",   "K",   "L",   "SCLN", "QUOT", "xxSK", "ENT",  "PGDN", "xxSK", "xxSK", "xxSK", "xxSK", "xxSK", "xxSK"],
+        ["LSFT", "xxSK", "Z",    "X",    "C",    "V",   "B",   "N",   "M",   "COMM","DOT",  "SLSH", "RSFT", "UP",   "xxSK", "xxSK", "xxSK", "xxSK", "xxSK", "xxSK", "xxSK"],
+        ["LCTL", "LGUI", "LALT", "xxSK", "xxSK", "xxSK","SPC", "xxSK","xxSK","xxSK","RALT", "FN1",  "LEFT", "DOWN", "RIGHT","xxSK", "xxSK", "xxSK", "xxSK", "xxSK", "xxSK"]
+      ]
+    }
+  }
+}

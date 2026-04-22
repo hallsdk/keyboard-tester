@@ -1,0 +1,27 @@
+# Build output
+build/
+
+# Qt generated files
+*.user
+*.user.*
+*.qbs.user
+*.qbs.user.*
+*.moc
+moc_*.cpp
+qrc_*.cpp
+ui_*.h
+Makefile*
+object_script.*
+*.prl
+
+# Compiled output
+*.o
+*.obj
+*.exe
+*.dll
+*.a
+*.lib
+
+# Debug/Release artifacts
+debug/
+release/
