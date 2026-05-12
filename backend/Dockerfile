@@ -1,5 +1,8 @@
 # Multi-stage build — produces a tiny image with just the binary + web assets.
 FROM golang:1.22-alpine AS build
+# Use China-friendly Go module proxy so `go mod download` works on servers
+# that cannot reach the default proxy.golang.org.
+ENV GOPROXY=https://goproxy.cn,direct
 WORKDIR /src
 # Cache deps
 COPY go.mod go.sum* ./
