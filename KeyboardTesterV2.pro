@@ -1,4 +1,4 @@
-QT       += core gui widgets
+QT       += core gui widgets network
 
 CONFIG += c++17
 
@@ -15,6 +15,8 @@ SOURCES += \
     src/KeyLayout.cpp \
     src/KeyboardView.cpp \
     src/ScanCodeMap.cpp \
+    src/ApiClient.cpp \
+    src/LoginDialog.cpp \
     OpenAgreementHID/OHID/OHID_Pack.c \
     OpenAgreementHID/OHID/OHID_Port.c \
     OpenAgreementHID/OHID/OHID_KeyBoard.c \
@@ -28,6 +30,8 @@ HEADERS += \
     src/KeyLayout.h \
     src/KeyboardView.h \
     src/ScanCodeMap.h \
+    src/ApiClient.h \
+    src/LoginDialog.h \
     OpenAgreementHID/OHID.h \
     OpenAgreementHID/OHID/OHID_Board.h \
     OpenAgreementHID/OHID/OHID_Port.h \
