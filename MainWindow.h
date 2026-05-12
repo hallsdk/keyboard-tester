@@ -155,6 +155,11 @@ private:
     class QLabel*   m_lightDlgHint   = nullptr;
     void            showLightDialog(const QString& name, uint32_t argb);
     void            hideLightDialog();
+
+    // --- 主题 ---
+    bool            m_isDark = true;
+    QAction*        m_actTheme = nullptr;
+    void            applyTheme(bool dark);
 };
 
 #endif // MAINWINDOW_H

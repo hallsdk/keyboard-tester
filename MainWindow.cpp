@@ -149,6 +149,10 @@ void MainWindow::buildUi()
     QMenu* menuAbout = mbar->addMenu("关于(&A)");
     QAction* actAbout    = menuAbout->addAction("关于本软件…");
     QAction* actCheckUpd = menuAbout->addAction("检查版本升级…");
+    menuAbout->addSeparator();
+    QAction* actTheme = menuAbout->addAction("切换浅色主题");
+    actTheme->setCheckable(true);
+    actTheme->setChecked(false);
 
     // 把上面这些 QAction 关联到代理 QPushButton 指针, 这样原有的 connect / 启用逻辑无需大改.
     // (m_btnImport / m_btnReload / ... 是隐藏的 QPushButton, 只用于复用现有 slot 链路.)
@@ -192,9 +196,14 @@ void MainWindow::buildUi()
     m_actLights[0] = actLR; m_actLights[1] = actLG; m_actLights[2] = actLB;
     m_actLights[3] = actLY; m_actLights[4] = actLW; m_actLights[5] = actLOff;
 
-    // About / update.
+    // About / update / theme.
     connect(actAbout,    &QAction::triggered, this, &MainWindow::onAbout);
     connect(actCheckUpd, &QAction::triggered, this, &MainWindow::onCheckUpdate);
+    connect(actTheme, &QAction::toggled, this, [this](bool light) {
+        applyTheme(!light);
+        m_actTheme->setText(light ? "切换深色主题" : "切换浅色主题");
+    });
+    m_actTheme = actTheme;
 
     // Open the layouts dir (where device_map.json lives) in OS file browser.
     connect(actEditMap, &QAction::triggered, this, [this]{
@@ -382,21 +391,97 @@ void MainWindow::buildUi()
             m_view->setKeyState(idx, KeyboardView::Passed);
     });
 
-    // Dark theme.
-    setStyleSheet(
-        "QMenuBar { background-color: rgb(38,44,54); color: rgb(220,225,235); padding: 2px; }"
-        "QMenuBar::item:selected { background-color: rgb(70,85,110); }"
-        "QMenu { background-color: rgb(38,44,54); color: rgb(220,225,235); border: 1px solid rgb(70,80,95); }"
-        "QMenu::item:selected { background-color: rgb(70,90,120); }"
-        "QMenu::item:disabled { color: rgb(110,115,125); }");
-    central->setStyleSheet(
-        "QWidget { background-color: rgb(32,36,44); color: rgb(220,225,235); }"
-        "QPushButton { background-color: rgb(60,68,82); padding: 4px 10px; "
-        "  border: 1px solid rgb(85,95,110); border-radius: 4px; }"
-        "QPushButton:hover { background-color: rgb(80,90,108); }"
-        "QPushButton:disabled { color: rgb(120,120,120); background-color: rgb(45,50,60); }"
-        "QComboBox { background-color: rgb(60,68,82); padding: 2px 6px; }"
-        "QLabel { color: rgb(220,225,235); }");
+    // Apply initial dark theme.
+    applyTheme(true);
+}
+
+// ---------------------------------------------------------------------------
+//  Theme
+// ---------------------------------------------------------------------------
+void MainWindow::applyTheme(bool dark)
+{
+    m_isDark = dark;
+    if (m_view) m_view->setDarkTheme(dark);
+
+    if (dark) {
+        setStyleSheet(
+            "QMenuBar { background-color: rgb(38,44,54); color: rgb(220,225,235); padding: 2px; }"
+            "QMenuBar::item:selected { background-color: rgb(70,85,110); }"
+            "QMenu { background-color: rgb(38,44,54); color: rgb(220,225,235); border: 1px solid rgb(70,80,95); }"
+            "QMenu::item:selected { background-color: rgb(70,90,120); }"
+            "QMenu::item:disabled { color: rgb(110,115,125); }");
+        centralWidget()->setStyleSheet(
+            "QWidget { background-color: rgb(32,36,44); color: rgb(220,225,235); }"
+            "QPushButton { background-color: rgb(60,68,82); padding: 4px 10px;"
+            "  border: 1px solid rgb(85,95,110); border-radius: 4px; }"
+            "QPushButton:hover { background-color: rgb(80,90,108); }"
+            "QPushButton:disabled { color: rgb(120,120,120); background-color: rgb(45,50,60); }"
+            "QComboBox { background-color: rgb(60,68,82); padding: 2px 6px; }"
+            "QLabel { color: rgb(220,225,235); }");
+        if (m_log) m_log->setStyleSheet(
+            "background-color: rgb(25,28,33); color: rgb(210,215,220);"
+            " font-family: Consolas, 'Courier New', monospace; font-size: 11px;");
+        if (m_statusKey) m_statusKey->setStyleSheet(
+            "QLabel { color: rgb(180,200,220); font-weight: 600; padding: 2px 8px;"
+            " border: 1px solid rgb(70,90,110); border-radius: 4px;"
+            " background-color: rgb(30,38,48); }");
+        if (m_mmBar) m_mmBar->setStyleSheet(
+            "QWidget { background-color: rgb(28,32,42); border: 1px solid rgb(70,40,110);"
+            " border-radius: 5px; }"
+            "QLabel { color: rgb(200,180,230); font-weight: 600; }");
+        const QString layerBtnSS =
+            "QPushButton { background-color: rgb(60,68,82); color: rgb(220,225,235);"
+            " border: 1px solid rgb(80,90,110); border-radius: 6px;"
+            " font-weight: 700; padding: 4px; }"
+            "QPushButton:hover { background-color: rgb(80,90,110); }"
+            "QPushButton:checked { background-color: rgb(40,110,180);"
+            " color: white; border: 1px solid rgb(80,160,230); }"
+            "QPushButton:disabled { color: rgb(120,125,135);"
+            " background-color: rgb(45,50,60); border-color: rgb(60,65,75); }";
+        if (m_btnLayerFn0) m_btnLayerFn0->setStyleSheet(layerBtnSS);
+        if (m_btnLayerFn1) m_btnLayerFn1->setStyleSheet(layerBtnSS);
+    } else {
+        setStyleSheet(
+            "QMenuBar { background-color: rgb(238,240,245); color: rgb(30,35,50); padding: 2px;"
+            " border-bottom: 1px solid rgb(200,203,215); }"
+            "QMenuBar::item:selected { background-color: rgb(200,208,228); }"
+            "QMenu { background-color: rgb(248,249,252); color: rgb(30,35,50);"
+            " border: 1px solid rgb(195,198,215); }"
+            "QMenu::item:selected { background-color: rgb(195,208,235); }"
+            "QMenu::item:disabled { color: rgb(170,172,182); }");
+        centralWidget()->setStyleSheet(
+            "QWidget { background-color: rgb(242,243,247); color: rgb(30,35,50); }"
+            "QPushButton { background-color: rgb(220,223,232); padding: 4px 10px;"
+            "  border: 1px solid rgb(175,180,200); border-radius: 4px; color: rgb(20,28,50); }"
+            "QPushButton:hover { background-color: rgb(200,205,222); }"
+            "QPushButton:disabled { color: rgb(165,168,180); background-color: rgb(210,212,220); }"
+            "QComboBox { background-color: rgb(220,223,232); padding: 2px 6px; color: rgb(20,28,50);"
+            " border: 1px solid rgb(175,180,200); }"
+            "QLabel { color: rgb(30,35,50); }");
+        if (m_log) m_log->setStyleSheet(
+            "background-color: rgb(248,249,252); color: rgb(30,38,55);"
+            " font-family: Consolas, 'Courier New', monospace; font-size: 11px;"
+            " border: 1px solid rgb(200,203,215);");
+        if (m_statusKey) m_statusKey->setStyleSheet(
+            "QLabel { color: rgb(20,60,120); font-weight: 600; padding: 2px 8px;"
+            " border: 1px solid rgb(130,155,200); border-radius: 4px;"
+            " background-color: rgb(220,230,248); }");
+        if (m_mmBar) m_mmBar->setStyleSheet(
+            "QWidget { background-color: rgb(230,228,248); border: 1px solid rgb(160,140,210);"
+            " border-radius: 5px; }"
+            "QLabel { color: rgb(80,50,150); font-weight: 600; }");
+        const QString layerBtnSS =
+            "QPushButton { background-color: rgb(215,218,230); color: rgb(20,28,55);"
+            " border: 1px solid rgb(170,175,198); border-radius: 6px;"
+            " font-weight: 700; padding: 4px; }"
+            "QPushButton:hover { background-color: rgb(195,200,220); }"
+            "QPushButton:checked { background-color: rgb(60,130,210);"
+            " color: white; border: 1px solid rgb(40,100,190); }"
+            "QPushButton:disabled { color: rgb(165,168,180);"
+            " background-color: rgb(210,212,222); border-color: rgb(185,188,205); }";
+        if (m_btnLayerFn0) m_btnLayerFn0->setStyleSheet(layerBtnSS);
+        if (m_btnLayerFn1) m_btnLayerFn1->setStyleSheet(layerBtnSS);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -558,10 +643,10 @@ void MainWindow::onGlobalKey(int scanCode, bool pressed)
 {
     if (scanCode > 0x300) return;            // ignore garbage
 
-    // ----- 灯光测试中: Enter = 正确, Esc = 错误, 其它键忽略 -----
+    // ----- 灯光测试中: Space = 正确, Esc = 错误, 其它键忽略 -----
     if (isInLightTest() && pressed) {
-        // Enter = 0x1C, Numpad Enter = 0x11C, Esc = 0x01
-        if (scanCode == 0x1C || scanCode == 0x11C) {
+        // Space = 0x39, Esc = 0x01
+        if (scanCode == 0x39) {
             appendLog("[LightTest] 用户确认 正确");
             advanceLightStep();
             return;
@@ -1346,7 +1431,7 @@ void MainWindow::showLightPrompt()
     if (s < 1 || s > 6) return;
     const QString name = QString::fromUtf8(lightStepName(s));
     const QString promptText =
-        QString("灯光测试: 请确认 [%1]   ✔ Enter=正确    ✘ Esc=错误").arg(name);
+        QString("灯光测试: 请确认 [%1]   ✔ Space=正确    ✘ Esc=错误").arg(name);
     m_statusKey->setText(promptText);
     m_statusKey->setStyleSheet(
         "QLabel { color: white; font-weight: 700; padding: 2px 8px;"
@@ -1399,7 +1484,7 @@ void MainWindow::showLightDialog(const QString& name, uint32_t argb)
         m_lightDlgHint->setStyleSheet(
             "QLabel { color: rgb(230,230,240); font-size: 16pt; font-weight: 600; }");
         m_lightDlgHint->setText(
-            "<span style='color:#7CFC8C'>✔ Enter = 正确</span>"
+            "<span style='color:#7CFC8C'>✔ Space = 正确</span>"
             "&nbsp;&nbsp;&nbsp;&nbsp;"
             "<span style='color:#FF8080'>✘ Esc = 错误</span>");
         lay->addWidget(m_lightDlgHint);

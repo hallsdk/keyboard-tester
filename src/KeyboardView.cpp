@@ -12,12 +12,16 @@ extern "C" {
 // ---- Style snippets -------------------------------------------------------
 namespace {
 
-QString styleFor(KeyboardView::State s, bool decal)
+QString styleFor(KeyboardView::State s, bool decal, bool dark)
 {
     if (decal) {
-        return QStringLiteral(
-            "QPushButton { background: transparent; color: rgb(120,120,120);"
-            " border: 1px dashed rgb(80,80,80); border-radius: 4px; font-size: 10px; }");
+        return dark
+            ? QStringLiteral(
+                "QPushButton { background: transparent; color: rgb(120,120,120);"
+                " border: 1px dashed rgb(80,80,80); border-radius: 4px; font-size: 10px; }")
+            : QStringLiteral(
+                "QPushButton { background: transparent; color: rgb(160,160,165);"
+                " border: 1px dashed rgb(190,192,198); border-radius: 4px; font-size: 10px; }");
     }
     switch (s) {
     case KeyboardView::Pressed:
@@ -36,19 +40,32 @@ QString styleFor(KeyboardView::State s, bool decal)
             " border: 1px solid rgb(170,30,30); border-radius: 5px;"
             " font-size: 11px; padding: 1px; }");
     case KeyboardView::Disabled:
-        return QStringLiteral(
-            "QPushButton { background-color: rgb(40,42,48); color: rgb(110,115,125);"
-            " border: 1px dashed rgb(75,80,90); border-radius: 5px;"
-            " font-size: 10px; font-style: italic; padding: 1px; }");
+        return dark
+            ? QStringLiteral(
+                "QPushButton { background-color: rgb(40,42,48); color: rgb(110,115,125);"
+                " border: 1px dashed rgb(75,80,90); border-radius: 5px;"
+                " font-size: 10px; font-style: italic; padding: 1px; }")
+            : QStringLiteral(
+                "QPushButton { background-color: rgb(210,212,218); color: rgb(160,163,172);"
+                " border: 1px dashed rgb(185,188,198); border-radius: 5px;"
+                " font-size: 10px; font-style: italic; padding: 1px; }");
     case KeyboardView::Idle:
     default:
-        return QStringLiteral(
-            "QPushButton { background-color: rgb(45,55,72); color: rgb(220,240,250);"
-            " border: 1px solid rgb(70,90,110); border-radius: 5px;"
-            " font-size: 11px; padding: 1px; }"
-            "QPushButton:hover { background-color: rgb(60,75,95); }"
-            "QPushButton:disabled { background-color: rgb(28,32,40); color: rgb(90,90,90);"
-            " border: 1px dashed rgb(60,60,60); }");
+        return dark
+            ? QStringLiteral(
+                "QPushButton { background-color: rgb(45,55,72); color: rgb(220,240,250);"
+                " border: 1px solid rgb(70,90,110); border-radius: 5px;"
+                " font-size: 11px; padding: 1px; }"
+                "QPushButton:hover { background-color: rgb(60,75,95); }"
+                "QPushButton:disabled { background-color: rgb(28,32,40); color: rgb(90,90,90);"
+                " border: 1px dashed rgb(60,60,60); }")
+            : QStringLiteral(
+                "QPushButton { background-color: rgb(225,228,236); color: rgb(20,28,50);"
+                " border: 1px solid rgb(175,180,200); border-radius: 5px;"
+                " font-size: 11px; padding: 1px; }"
+                "QPushButton:hover { background-color: rgb(205,210,225); }"
+                "QPushButton:disabled { background-color: rgb(215,217,225); color: rgb(155,158,168);"
+                " border: 1px dashed rgb(190,192,202); }");
     }
 }
 
@@ -187,9 +204,19 @@ void KeyboardView::styleButton(int i)
 {
     const KeyDef* k = keyAt(i);
     if (!k) return;
-    const QString s = styleFor(m_states[i], k->decal);
+    const QString s = styleFor(m_states[i], k->decal, m_darkTheme);
     if (m_primaryBtns[i]) m_primaryBtns[i]->setStyleSheet(s);
     if (m_secondBtns[i])  m_secondBtns[i]->setStyleSheet(s);
+}
+
+void KeyboardView::setDarkTheme(bool dark)
+{
+    if (m_darkTheme == dark) return;
+    m_darkTheme = dark;
+    setStyleSheet(dark ? "background-color: rgb(20,24,30);"
+                       : "background-color: rgb(235,237,243);");
+    for (int i = 0; i < m_primaryBtns.size(); ++i)
+        styleButton(i);
 }
 
 void KeyboardView::onChildClicked()

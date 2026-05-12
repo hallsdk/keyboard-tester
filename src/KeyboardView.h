@@ -51,6 +51,8 @@ public:
     void  setKeyDisabled(int index);
     // Replace the visible text on a key (both rectangles if hasSecond).
     void setKeyLabel(int index, const QString& text);
+    // Theme: true = dark (default), false = light.
+    void setDarkTheme(bool dark);
     // Convenience: counts.
     int passedCount() const;
     int totalTestable() const;     // excludes decals + KC_NO
@@ -78,6 +80,7 @@ private:
     QVector<QPushButton*> m_secondBtns; // index parallel; entries may be null
     QVector<State>        m_states;
     QHash<uint16_t, int>  m_codeIndex;  // first index per KC code
+    bool                  m_darkTheme = true;
 };
 
 #endif // KEYBOARDVIEW_H
