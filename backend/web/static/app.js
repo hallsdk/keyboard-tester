@@ -282,7 +282,8 @@ function editDeviceDialog(existing) {
         <button class="ghost" id="cancel">取消</button>
       </div>
     </div>`;
-  view.querySelector("#cancel").onclick = () => { location.hash = "#/devices"; };
+  const goBack = () => { location.hash = "#/devices"; renderDevices(view); };
+  view.querySelector("#cancel").onclick = goBack;
   view.querySelector("#ok").onclick = async () => {
     const payload = {
       name: view.querySelector("#name").value,
@@ -301,8 +302,8 @@ function editDeviceDialog(existing) {
       } else {
         await api("/api/devices/" + existing.id, { method: "PUT", body: payload });
       }
+      await renderDevices(view);
       toast("已保存");
-      location.hash = "#/devices";
     } catch (e) { toast(e.message, true); }
   };
 }
@@ -380,7 +381,8 @@ function editUserDialog(existing) {
       </div>
     </div>`;
   if (existing) view.querySelector("#r").value = existing.role;
-  view.querySelector("#cancel").onclick = () => location.hash = "#/users";
+  const goBack = () => { location.hash = "#/users"; renderUsers(view); };
+  view.querySelector("#cancel").onclick = goBack;
   view.querySelector("#ok").onclick = async () => {
     try {
       if (isNew) {
@@ -398,8 +400,8 @@ function editUserDialog(existing) {
         if (pw) body.password = pw;
         await api("/api/users/" + existing.id, { method: "PUT", body });
       }
+      await renderUsers(view);
       toast("已保存");
-      location.hash = "#/users";
     } catch (e) { toast(e.message, true); }
   };
 }
