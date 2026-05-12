@@ -239,23 +239,8 @@ void MainWindow::buildUi()
     m_vidpid = new QComboBox(central);
     m_vidpid->setEditable(true);
     // 自动扫描 layouts/ 子目录，以目录名作为 VID-PID 条目填充下拉列表.
-    // 只需在 layouts/ 下创建对应子目录，程序重启后自动识别.
-    {
-        const QString devicesDir = QCoreApplication::applicationDirPath() + "/layouts";
-        QDir dir(devicesDir);
-        const QStringList subDirs = dir.entryList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
-        for (const QString &d : subDirs) {
-            // 只接受形如 0xXXXX-0xYYYY 的目录名
-            if (d.contains('-') && d.startsWith("0x", Qt::CaseInsensitive))
-                m_vidpid->addItem(d);
-        }
-        // 如果目录不存在或为空，回退到硬编码列表
-        if (m_vidpid->count() == 0) {
-            m_vidpid->addItem("0x36F9-0xAB05");
-            m_vidpid->addItem("0x36F9-0xAB06");
-            m_vidpid->addItem("0x2E3C-0x5745");
-        }
-    }
+    // 当 layouts/ 为空时下拉框也为空 —— 需先通过"服务器 → 同步设备列表"拉取配列.
+    reloadVidPidList();
     m_vidpid->setMinimumWidth(160);
     devH->addWidget(m_vidpid);
     connect(m_vidpid, &QComboBox::currentTextChanged,
@@ -1695,12 +1680,33 @@ QString MainWindow::cachedLayoutPath(uint16_t vid, uint16_t pid) const
         .arg(vid, 4, 16, QChar('0'))
         .arg(pid, 4, 16, QChar('0')).toUpper();
     const QString dir = QCoreApplication::applicationDirPath()
-                        + "/cache/layouts/" + key;
+                        + "/layouts/" + key;
     QDir d(dir);
     if (!d.exists()) return QString();
     const auto names = d.entryList(QDir::Files | QDir::NoDotAndDotDot, QDir::Time);
     if (names.isEmpty()) return QString();
     return d.absoluteFilePath(names.first());
+}
+
+void MainWindow::reloadVidPidList()
+{
+    if (!m_vidpid) return;
+    const QString cur = m_vidpid->currentText();
+    QSignalBlocker blocker(m_vidpid);
+    m_vidpid->clear();
+    const QString devicesDir = QCoreApplication::applicationDirPath() + "/layouts";
+    QDir dir(devicesDir);
+    const QStringList subDirs = dir.entryList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
+    for (const QString& d : subDirs) {
+        if (d.contains('-') && d.startsWith("0x", Qt::CaseInsensitive))
+            m_vidpid->addItem(d);
+    }
+    // Restore previous selection if it still exists.
+    if (!cur.isEmpty()) {
+        const int idx = m_vidpid->findText(cur, Qt::MatchFixedString);
+        if (idx >= 0) m_vidpid->setCurrentIndex(idx);
+        else m_vidpid->setEditText(cur);
+    }
 }
 
 bool MainWindow::fetchLayoutFromServer(uint16_t vid, uint16_t pid)
@@ -1723,8 +1729,8 @@ bool MainWindow::fetchLayoutFromServer(uint16_t vid, uint16_t pid)
     const QString key = QString("0x%1-0x%2")
         .arg(vid, 4, 16, QChar('0'))
         .arg(pid, 4, 16, QChar('0')).toUpper();
-    const QString dirPath = QCoreApplication::applicationDirPath()
-                            + "/cache/layouts/" + key;
+    const QString layoutsDir = QCoreApplication::applicationDirPath() + "/layouts";
+    const QString dirPath = layoutsDir + "/" + key;
     QDir().mkpath(dirPath);
 
     // Clear stale files so listing returns just this one.
@@ -1736,12 +1742,36 @@ bool MainWindow::fetchLayoutFromServer(uint16_t vid, uint16_t pid)
     const QString abs = dirPath + "/" + safe;
     QFile f(abs);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-        appendLog("[Server] 缓存写入失败: " + abs);
+        appendLog("[Server] 写入失败: " + abs);
         return false;
     }
     f.write(body);
     f.close();
     appendLog(QString("[Server] 已同步配列 %1 (%2 bytes)").arg(safe).arg(body.size()));
+
+    // Update layouts/device_map.json so resolveLayoutForVidPid() can find it
+    // even by path lookup, and so the file format stays consistent with manual layouts.
+    {
+        const QString mapPath = layoutsDir + "/device_map.json";
+        QJsonObject root, devs;
+        QFile mf(mapPath);
+        if (mf.open(QIODevice::ReadOnly)) {
+            QJsonParseError pe;
+            const QJsonDocument doc = QJsonDocument::fromJson(mf.readAll(), &pe);
+            mf.close();
+            if (pe.error == QJsonParseError::NoError && doc.isObject()) {
+                root = doc.object();
+                devs = root.value("devices").toObject();
+            }
+        }
+        devs.insert(key, key + "/" + safe);
+        root.insert("devices", devs);
+        QFile mfw(mapPath);
+        if (mfw.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            mfw.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+            mfw.close();
+        }
+    }
 
     // If this VID-PID is currently selected, reload immediately.
     if (m_vidpid) {
@@ -1834,6 +1864,7 @@ void MainWindow::onServerSyncList()
         if (fetchLayoutFromServer(v, p)) ++ok;
     }
     appendLog(QString("[Server] 同步完成: %1 / %2 成功").arg(ok).arg(list.size()));
+    reloadVidPidList();
     QMessageBox::information(this, "同步设备列表",
-        QString("已同步 %1 / %2 个设备的配列到本地缓存").arg(ok).arg(list.size()));
+        QString("已同步 %1 / %2 个设备的配列到 layouts/").arg(ok).arg(list.size()));
 }

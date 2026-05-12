@@ -65,10 +65,13 @@ private:
     bool tryAutoLoadForVidPid(uint16_t vid, uint16_t pid);
 
     // ----- Server-side layout cache -----
-    // <appDir>/cache/layouts/0xVVVV-0xPPPP/<filename>
+    // <appDir>/layouts/0xVVVV-0xPPPP/<filename>  (same dir as device_map.json)
     QString cachedLayoutPath(uint16_t vid, uint16_t pid) const;
-    // Synchronously fetch from server, write to cache, reload if currently selected.
+    // Synchronously fetch from server, write to layouts/, update device_map.json,
+    // reload if currently selected.
     bool fetchLayoutFromServer(uint16_t vid, uint16_t pid);
+    // Refresh the VID-PID combo by scanning layouts/ subdirectories.
+    void reloadVidPidList();
     void updateServerMenuLabels();
 
     KeyboardView*   m_view         = nullptr;
