@@ -29,11 +29,15 @@
 #include <QScreen>
 #include <QIcon>
 #include <QFile>
+#include <QInputDialog>
+#include <QLineEdit>
 
 #include "src/KeyboardView.h"
 #include "src/ScanCodeMap.h"
 #include "DeviceManager.h"
 #include "KeyHook.h"
+#include "src/ApiClient.h"
+#include "src/LoginDialog.h"
 
 extern "C" {
 #include "Layout/HID_Usage_Tables.h"
@@ -48,6 +52,10 @@ MainWindow::MainWindow(QWidget* parent)
     setMinimumSize(680, 380);
 
     buildUi();
+
+    // API client (token + base URL persisted in QSettings).
+    m_api = new ApiClient(this);
+    updateServerMenuLabels();
 
     // Device manager
     m_dev = new DeviceManager(this);
@@ -153,6 +161,19 @@ void MainWindow::buildUi()
     QAction* actTheme = menuAbout->addAction("切换浅色主题");
     actTheme->setCheckable(true);
     actTheme->setChecked(false);
+
+    // ---- 服务器 ----
+    QMenu* menuSrv = mbar->addMenu("服务器(&S)");
+    m_actSrvLogin  = menuSrv->addAction("登录…");
+    m_actSrvLogout = menuSrv->addAction("注销");
+    menuSrv->addSeparator();
+    m_actSrvSync   = menuSrv->addAction("同步设备列表");
+    menuSrv->addSeparator();
+    m_actSrvAddr   = menuSrv->addAction("服务器地址…");
+    connect(m_actSrvLogin,  &QAction::triggered, this, &MainWindow::onServerLogin);
+    connect(m_actSrvLogout, &QAction::triggered, this, &MainWindow::onServerLogout);
+    connect(m_actSrvSync,   &QAction::triggered, this, &MainWindow::onServerSyncList);
+    connect(m_actSrvAddr,   &QAction::triggered, this, &MainWindow::onServerAddress);
 
     // 把上面这些 QAction 关联到代理 QPushButton 指针, 这样原有的 connect / 启用逻辑无需大改.
     // (m_btnImport / m_btnReload / ... 是隐藏的 QPushButton, 只用于复用现有 slot 链路.)
@@ -959,6 +980,11 @@ void MainWindow::onLightColor()
 // ---------------------------------------------------------------------------
 QString MainWindow::resolveLayoutForVidPid(uint16_t vid, uint16_t pid) const
 {
+    // 1) Server cache (preferred when present) — written by fetchLayoutFromServer().
+    const QString cached = cachedLayoutPath(vid, pid);
+    if (!cached.isEmpty()) return cached;
+
+    // 2) Local fallback: layouts/device_map.json shipped with the exe.
     const QString dir = QCoreApplication::applicationDirPath() + "/layouts";
     const QString mapPath = dir + "/device_map.json";
     QFile f(mapPath);
@@ -1002,6 +1028,10 @@ QString MainWindow::resolveLayoutForVidPid(uint16_t vid, uint16_t pid) const
 
 bool MainWindow::tryAutoLoadForVidPid(uint16_t vid, uint16_t pid)
 {
+    // Kick off server refresh in the background (uses cached file in the meantime).
+    if (m_api && m_api->isLoggedIn()) {
+        QTimer::singleShot(0, this, [this, vid, pid]{ fetchLayoutFromServer(vid, pid); });
+    }
     const QString path = resolveLayoutForVidPid(vid, pid);
     if (path.isEmpty()) {
         appendLog(QString("device_map.json 未配置 0x%1-0x%2 的布局")
@@ -1020,6 +1050,11 @@ void MainWindow::onVidPidChanged(const QString& text)
     const uint16_t vid = parts[0].toUShort(&okV, 16);
     const uint16_t pid = parts[1].toUShort(&okP, 16);
     if (!okV || !okP) return;
+
+    // Background refresh from server (will reload if a newer file arrives).
+    if (m_api && m_api->isLoggedIn()) {
+        QTimer::singleShot(0, this, [this, vid, pid]{ fetchLayoutFromServer(vid, pid); });
+    }
 
     // Silent attempt — only switches if a mapping exists.
     const QString path = resolveLayoutForVidPid(vid, pid);
@@ -1646,4 +1681,156 @@ void MainWindow::showBigResult(bool ok)
 void MainWindow::hideBigResult()
 {
     if (m_bigResult) m_bigResult->hide();
+}
+
+// ===========================================================================
+//  Server / API
+// ===========================================================================
+QString MainWindow::cachedLayoutPath(uint16_t vid, uint16_t pid) const
+{
+    const QString key = QString("0x%1-0x%2")
+        .arg(vid, 4, 16, QChar('0'))
+        .arg(pid, 4, 16, QChar('0')).toUpper();
+    const QString dir = QCoreApplication::applicationDirPath()
+                        + "/cache/layouts/" + key;
+    QDir d(dir);
+    if (!d.exists()) return QString();
+    const auto names = d.entryList(QDir::Files | QDir::NoDotAndDotDot, QDir::Time);
+    if (names.isEmpty()) return QString();
+    return d.absoluteFilePath(names.first());
+}
+
+bool MainWindow::fetchLayoutFromServer(uint16_t vid, uint16_t pid)
+{
+    if (!m_api || !m_api->isLoggedIn()) return false;
+
+    QByteArray body;
+    QString filename, err;
+    if (!m_api->fetchLayout(vid, pid, &body, &filename, &err)) {
+        appendLog(QString("[Server] 拉取 0x%1-0x%2 失败: %3")
+                  .arg(vid, 4, 16, QChar('0'))
+                  .arg(pid, 4, 16, QChar('0'))
+                  .arg(err));
+        return false;
+    }
+    // Sanitize filename — strip any directory part the server might have included.
+    QString safe = QFileInfo(filename).fileName();
+    if (safe.isEmpty()) safe = "layout.c";
+
+    const QString key = QString("0x%1-0x%2")
+        .arg(vid, 4, 16, QChar('0'))
+        .arg(pid, 4, 16, QChar('0')).toUpper();
+    const QString dirPath = QCoreApplication::applicationDirPath()
+                            + "/cache/layouts/" + key;
+    QDir().mkpath(dirPath);
+
+    // Clear stale files so listing returns just this one.
+    QDir d(dirPath);
+    for (const QString& fn : d.entryList(QDir::Files | QDir::NoDotAndDotDot)) {
+        if (fn != safe) d.remove(fn);
+    }
+
+    const QString abs = dirPath + "/" + safe;
+    QFile f(abs);
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        appendLog("[Server] 缓存写入失败: " + abs);
+        return false;
+    }
+    f.write(body);
+    f.close();
+    appendLog(QString("[Server] 已同步配列 %1 (%2 bytes)").arg(safe).arg(body.size()));
+
+    // If this VID-PID is currently selected, reload immediately.
+    if (m_vidpid) {
+        const QStringList parts = m_vidpid->currentText().split('-');
+        if (parts.size() == 2) {
+            const uint16_t cv = parts[0].toUShort(nullptr, 16);
+            const uint16_t cp = parts[1].toUShort(nullptr, 16);
+            if (cv == vid && cp == pid) {
+                if (m_lastLayoutPath != abs) loadLayoutFile(abs);
+            }
+        }
+    }
+    return true;
+}
+
+void MainWindow::updateServerMenuLabels()
+{
+    if (!m_actSrvLogin) return;
+    if (m_api && m_api->isLoggedIn()) {
+        m_actSrvLogin->setText(QString("已登录: %1 (%2)")
+                               .arg(m_api->username(), m_api->role()));
+        m_actSrvLogin->setEnabled(false);
+        m_actSrvLogout->setEnabled(true);
+        m_actSrvSync->setEnabled(true);
+    } else {
+        m_actSrvLogin->setText("登录…");
+        m_actSrvLogin->setEnabled(true);
+        m_actSrvLogout->setEnabled(false);
+        m_actSrvSync->setEnabled(false);
+    }
+}
+
+void MainWindow::onServerLogin()
+{
+    if (!m_api) return;
+    LoginDialog dlg(m_api, this);
+    if (dlg.exec() == QDialog::Accepted) {
+        appendLog(QString("[Server] 已登录: %1 (%2)")
+                  .arg(m_api->username(), m_api->role()));
+        updateServerMenuLabels();
+        // Try to refresh layout for current VID/PID right away.
+        if (m_vidpid) onVidPidChanged(m_vidpid->currentText());
+    }
+}
+
+void MainWindow::onServerLogout()
+{
+    if (!m_api || !m_api->isLoggedIn()) return;
+    if (QMessageBox::question(this, "注销",
+            QString("确认注销账号 %1？").arg(m_api->username()))
+        != QMessageBox::Yes) return;
+    m_api->clearAuth();
+    appendLog("[Server] 已注销");
+    updateServerMenuLabels();
+}
+
+void MainWindow::onServerAddress()
+{
+    if (!m_api) return;
+    bool ok = false;
+    const QString cur = m_api->baseUrl();
+    const QString v = QInputDialog::getText(this, "服务器地址",
+        "示例: https://ktester.hallsdk.com",
+        QLineEdit::Normal, cur, &ok);
+    if (!ok || v.trimmed().isEmpty()) return;
+    m_api->setBaseUrl(v.trimmed());
+    appendLog(QString("[Server] 服务器地址已设置为 %1").arg(m_api->baseUrl()));
+}
+
+void MainWindow::onServerSyncList()
+{
+    if (!m_api || !m_api->isLoggedIn()) {
+        appendLog("[Server] 请先登录");
+        return;
+    }
+    QList<ApiDevice> list;
+    QString err;
+    if (!m_api->listDevices(&list, &err)) {
+        appendLog("[Server] 同步设备列表失败: " + err);
+        QMessageBox::warning(this, "同步设备列表", err);
+        return;
+    }
+    appendLog(QString("[Server] 服务器共 %1 个设备, 开始同步配列…").arg(list.size()));
+    int ok = 0;
+    for (const auto& d : list) {
+        bool okv=false, okp=false;
+        const uint16_t v = d.vid.mid(2).toUShort(&okv, 16);
+        const uint16_t p = d.pid.mid(2).toUShort(&okp, 16);
+        if (!okv || !okp) continue;
+        if (fetchLayoutFromServer(v, p)) ++ok;
+    }
+    appendLog(QString("[Server] 同步完成: %1 / %2 成功").arg(ok).arg(list.size()));
+    QMessageBox::information(this, "同步设备列表",
+        QString("已同步 %1 / %2 个设备的配列到本地缓存").arg(ok).arg(list.size()));
 }

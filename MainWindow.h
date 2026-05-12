@@ -22,6 +22,7 @@ class QHBoxLayout;
 class KeyboardView;
 class DeviceManager;
 class KeyHook;
+class ApiClient;
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
@@ -47,6 +48,12 @@ private slots:
     void onAbout();
     void onCheckUpdate();
 
+    // ----- Server / API -----
+    void onServerLogin();
+    void onServerLogout();
+    void onServerAddress();
+    void onServerSyncList();
+
 private:
     void buildUi();
     bool loadLayoutFile(const QString& path);
@@ -56,6 +63,13 @@ private:
     // or an empty string if no mapping exists / file missing.
     QString resolveLayoutForVidPid(uint16_t vid, uint16_t pid) const;
     bool tryAutoLoadForVidPid(uint16_t vid, uint16_t pid);
+
+    // ----- Server-side layout cache -----
+    // <appDir>/cache/layouts/0xVVVV-0xPPPP/<filename>
+    QString cachedLayoutPath(uint16_t vid, uint16_t pid) const;
+    // Synchronously fetch from server, write to cache, reload if currently selected.
+    bool fetchLayoutFromServer(uint16_t vid, uint16_t pid);
+    void updateServerMenuLabels();
 
     KeyboardView*   m_view         = nullptr;
     QComboBox*      m_vidpid       = nullptr;
@@ -160,6 +174,13 @@ private:
     bool            m_isDark = true;
     QAction*        m_actTheme = nullptr;
     void            applyTheme(bool dark);
+
+    // --- 服务器 / API ---
+    ApiClient*      m_api          = nullptr;
+    QAction*        m_actSrvLogin  = nullptr;
+    QAction*        m_actSrvLogout = nullptr;
+    QAction*        m_actSrvAddr   = nullptr;
+    QAction*        m_actSrvSync   = nullptr;
 };
 
 #endif // MAINWINDOW_H

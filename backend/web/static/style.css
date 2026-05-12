@@ -1,0 +1,113 @@
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0;
+  font-family: -apple-system, "Segoe UI", "Helvetica Neue", "PingFang SC",
+    "Microsoft YaHei", sans-serif;
+  background: #f4f5f9;
+  color: #1c2235;
+  min-height: 100%;
+}
+header {
+  display: flex; align-items: center; gap: 18px;
+  padding: 10px 22px;
+  background: linear-gradient(90deg,#3a4664,#2a3358);
+  color: #f1f3fb;
+  box-shadow: 0 2px 4px rgba(0,0,0,.08);
+}
+.brand { font-weight: 700; font-size: 16px; }
+nav { display: flex; gap: 6px; flex: 1; }
+nav button {
+  background: transparent; color: #d7dbeb; border: none;
+  padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 14px;
+}
+nav button.active { background: rgba(255,255,255,.18); color: #fff; }
+nav button:hover { background: rgba(255,255,255,.1); }
+
+.user-area { font-size: 13px; color: #d7dbeb; }
+.user-area .role-badge {
+  display: inline-block; padding: 2px 7px; border-radius: 10px;
+  background: #ffae35; color: #2c1d00; font-weight: 700; margin-left: 6px;
+  font-size: 11px;
+}
+.user-area .role-badge.super { background: #ff5a78; color: #fff; }
+.user-area .role-badge.user  { background: #6c8cf5; color: #fff; }
+.user-area button { margin-left: 10px; }
+
+main { padding: 24px; max-width: 1100px; margin: 0 auto; }
+footer { padding: 12px; text-align: center; color: #889; font-size: 12px; }
+
+.card {
+  background: #fff; border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(20,30,60,.08);
+  padding: 22px; margin-bottom: 18px;
+}
+h1, h2 { margin: 0 0 14px 0; }
+h1 { font-size: 22px; }
+h2 { font-size: 17px; color: #495273; }
+
+button {
+  background: #4257b2; color: #fff; border: none;
+  padding: 7px 14px; border-radius: 5px; cursor: pointer; font-size: 14px;
+}
+button:hover { background: #364798; }
+button.ghost { background: #e7e9f2; color: #2a345b; }
+button.ghost:hover { background: #d7dae8; }
+button.danger { background: #e64966; }
+button.danger:hover { background: #c23552; }
+button:disabled { background: #a8aec6; cursor: not-allowed; }
+
+input, textarea, select {
+  font-family: inherit; font-size: 14px;
+  padding: 7px 9px;
+  border: 1px solid #c2c6d8; border-radius: 4px;
+  background: #fff; color: #1c2235;
+  width: 100%;
+}
+input:focus, textarea:focus, select:focus { outline: 2px solid #4257b2; }
+
+label { display: block; margin: 10px 0 4px; font-size: 13px; color: #586189; }
+
+table { width: 100%; border-collapse: collapse; }
+th, td { padding: 8px 10px; border-bottom: 1px solid #eceef5; font-size: 14px; text-align: left; }
+th { background: #f3f5fb; color: #4a5377; font-weight: 600; }
+tr:hover td { background: #f9fafd; }
+
+.role-pill {
+  display: inline-block; padding: 1px 8px; border-radius: 10px;
+  font-size: 11px; font-weight: 700;
+}
+.role-pill.user  { background: #e0e6ff; color: #2540a6; }
+.role-pill.admin { background: #fff1cf; color: #7a4d00; }
+.role-pill.super { background: #ffd6df; color: #a01535; }
+
+.auth-box {
+  max-width: 380px; margin: 50px auto;
+  background: #fff; padding: 26px; border-radius: 10px;
+  box-shadow: 0 4px 18px rgba(20,30,60,.1);
+}
+.auth-box h1 { text-align: center; }
+.auth-box .tabs { display: flex; margin-bottom: 18px; }
+.auth-box .tabs button {
+  flex: 1; background: transparent; color: #586189;
+  border-bottom: 2px solid transparent; border-radius: 0;
+}
+.auth-box .tabs button.active { color: #4257b2; border-bottom-color: #4257b2; }
+
+.toast {
+  position: fixed; right: 22px; bottom: 22px;
+  background: #1f2747; color: #fff; padding: 10px 16px;
+  border-radius: 6px; box-shadow: 0 4px 16px rgba(0,0,0,.2);
+  font-size: 14px; z-index: 999;
+  opacity: 0; transform: translateY(10px); transition: all .2s;
+}
+.toast.show { opacity: 1; transform: translateY(0); }
+.toast.err { background: #c23552; }
+
+.row { display: flex; gap: 10px; align-items: center; }
+.row > * { flex: 1; }
+.actions { display: flex; gap: 6px; }
+
+.muted { color: #889; font-size: 12px; }
+.hidden { display: none !important; }
+
+textarea { min-height: 220px; font-family: Consolas, "Courier New", monospace; font-size: 12px; }
