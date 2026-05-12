@@ -17,7 +17,7 @@ type Config struct {
 
 func Load() Config {
 	c := Config{
-		Listen:         getEnv("LISTEN_ADDR", ":8080"),
+		Listen:         getEnv("LISTEN_ADDR", ":3030"),
 		DataDir:        getEnv("DATA_DIR", "./data"),
 		JWTSecret:      os.Getenv("JWT_SECRET"),
 		SuperAdminUser: os.Getenv("SUPER_ADMIN_USER"),

@@ -104,6 +104,6 @@ rsync -aq --delete /opt/ktester/backups/ user@backup-host:/srv/ktester-backups/
 ```bash
 cd backend
 cp .env.example .env       # 改一改
-go run ./cmd/server        # 监听 :8080
-# 打开 http://localhost:8080
+go run ./cmd/server        # 监听 :3030
+# 打开 http://localhost:3030
 ```

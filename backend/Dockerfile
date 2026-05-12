@@ -17,6 +17,6 @@ COPY --from=build /out/ktester /app/ktester
 COPY --from=build /src/web /app/web
 RUN mkdir -p /app/data && chown -R app:app /app
 USER app
-EXPOSE 8080
-ENV LISTEN_ADDR=":8080" DATA_DIR="/app/data"
+EXPOSE 3030
+ENV LISTEN_ADDR=":3030" DATA_DIR="/app/data"
 ENTRYPOINT ["/app/ktester"]
