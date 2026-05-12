@@ -319,6 +319,16 @@ function editDeviceDialog(existing) {
       </div>
     </div>`;
   if (existing && existing.factory_id) view.querySelector("#fac").value = existing.factory_id;
+  // Auto-fill layout filename from device name when field is empty.
+  if (isNew) {
+    const nameEl = view.querySelector("#name");
+    const fileEl = view.querySelector("#file");
+    nameEl.addEventListener("input", () => {
+      const slug = nameEl.value.trim().toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_\-]/g, "");
+      if (slug) fileEl.value = slug + ".c";
+      else fileEl.value = "";
+    });
+  }
   view.querySelector("#cancel").onclick = () => { renderDevices(view); };
   view.querySelector("#ok").onclick = async () => {
     const payload = {

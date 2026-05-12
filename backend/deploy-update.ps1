@@ -34,6 +34,7 @@ Write-Host "[2/4] Uploading binary + web..." -ForegroundColor Cyan
 scp @SshOpts ktester-linux "${Server}:/tmp/ktester-new"
 scp @SshOpts -r web "${Server}:/tmp/ktester-web"
 if ($LASTEXITCODE -ne 0) { Write-Host "Upload failed" -ForegroundColor Red; exit 1 }
+Remove-Item ktester-linux -Force
 Write-Host "  OK" -ForegroundColor Green
 
 Write-Host "[3/4] Running hot-update on server..." -ForegroundColor Cyan
