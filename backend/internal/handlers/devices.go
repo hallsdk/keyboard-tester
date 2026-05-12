@@ -29,14 +29,16 @@ func NewDeviceHandler(db *sql.DB, dir string) *DeviceHandler {
 	return &DeviceHandler{db: db, layoutsDir: dir}
 }
 
-var vidpidRe = regexp.MustCompile(`^0x[0-9A-Fa-f]{4}$`)
+var vidpidRe = regexp.MustCompile(`^0x[0-9A-F]{4}$`)
 
 func normHex(s string) string {
 	s = strings.TrimSpace(s)
-	if !strings.HasPrefix(strings.ToLower(s), "0x") {
-		s = "0x" + s
+	lower := strings.ToLower(s)
+	if !strings.HasPrefix(lower, "0x") {
+		lower = "0x" + lower
 	}
-	return strings.ToUpper("0x" + strings.TrimPrefix(strings.ToLower(s), "0x"))
+	digits := strings.TrimPrefix(lower, "0x")
+	return "0x" + strings.ToUpper(digits)
 }
 
 func (h *DeviceHandler) List(w http.ResponseWriter, r *http.Request) {

@@ -64,12 +64,11 @@ MainWindow::MainWindow(QWidget* parent)
     connect(m_dev, &DeviceManager::disconnected,
             this, &MainWindow::onDeviceDisconnected);
 
-    // Global keyboard hook
+    // Global keyboard hook — installed only while a device is connected.
     m_hook = new KeyHook(this);
     connect(m_hook, &KeyHook::keyEvent,
             this, &MainWindow::onGlobalKey,
             Qt::QueuedConnection);
-    m_hook->install();
 
     // Fn 自动检测定时器: 收到多媒体/Desk 码就(临时)切换到 Fn1 视图,
     // 一段时间(~600ms) 没有再来就视为 Fn 已松开, 切回 Fn0.
@@ -862,6 +861,8 @@ void MainWindow::onDisconnectClicked()
 
 void MainWindow::onDeviceConnected(uint32_t board_id)
 {
+    // Start capturing keys only now that a device is connected.
+    m_hook->install();
     const auto& info = m_dev->info();
     m_statusBoard->setText(QString("设备: 已连接 board_id=0x%1  fw=%2")
                            .arg(board_id, 8, 16, QChar('0'))
@@ -902,6 +903,8 @@ void MainWindow::onDeviceConnected(uint32_t board_id)
 
 void MainWindow::onDeviceDisconnected()
 {
+    // Stop capturing keys while no device is connected.
+    m_hook->uninstall();
     m_btnConn->setEnabled(true);
     m_btnDisc->setEnabled(false);
     m_statusBoard->setText("设备: 未连接");
