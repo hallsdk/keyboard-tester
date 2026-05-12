@@ -69,6 +69,8 @@ func main() {
 		// Public endpoints
 		r.Post("/auth/register", authH.Register)
 		r.Post("/auth/login", authH.Login)
+		// Public factory list for registration page.
+		r.Get("/factories/public", factH.ListPublic)
 
 		// Authenticated endpoints
 		r.Group(func(r chi.Router) {
@@ -103,15 +105,18 @@ func main() {
 			r.Group(func(r chi.Router) {
 				r.Use(auth.RequireRole("admin", "super_admin"))
 				r.Get("/users", userH.List)
+				r.Post("/users", userH.Create)
+				r.Get("/users/pending", userH.ListPending)
+				r.Put("/users/{id}/approve", userH.Approve)
+				r.Put("/users/{id}/reject", userH.Reject)
 				r.Get("/users/{id}/factories", factH.GetUserFactories)
-				r.Get("/users/{id}/devices", factH.GetUserDevices)
-				r.Put("/users/{id}/devices", factH.SetUserDevices)
-				// Factories: list is visible to admin+ (their own); CRUD restricted below.
+				// Factories: list + factory device visibility.
 				r.Get("/factories", factH.List)
+				r.Get("/factories/{id}/devices", factH.GetFactoryVisibleDevices)
+				r.Put("/factories/{id}/devices", factH.SetFactoryVisibleDevices)
 			})
 			r.Group(func(r chi.Router) {
 				r.Use(auth.RequireRole("super_admin"))
-				r.Post("/users", userH.Create)
 				r.Put("/users/{id}", userH.Update)
 				r.Delete("/users/{id}", userH.Delete)
 				r.Put("/users/{id}/factories", factH.SetUserFactories)

@@ -59,16 +59,16 @@ func (h *DeviceHandler) List(w http.ResponseWriter, r *http.Request) {
 			WHERE d.factory_id IN (SELECT factory_id FROM user_factories WHERE user_id = ?)
 			ORDER BY d.vid, d.pid`, c.UserID)
 	default: // RoleUser
-		// If a per-user whitelist exists, use it; otherwise show all devices of the user's factory.
+		// If a factory-level whitelist exists, use it; otherwise show all devices of the user's factory.
 		rows, err = h.db.Query(`
 			SELECT d.id, d.factory_id, d.vid, d.pid, d.name, d.description, d.layout_file, d.created_by, d.created_at, d.updated_at
 			FROM devices d
 			WHERE d.factory_id IN (SELECT factory_id FROM user_factories WHERE user_id = ?)
 			  AND (
-			        NOT EXISTS (SELECT 1 FROM user_devices WHERE user_id = ?)
-			        OR d.id IN (SELECT device_id FROM user_devices WHERE user_id = ?)
+			        NOT EXISTS (SELECT 1 FROM factory_visible_devices WHERE factory_id = d.factory_id)
+			        OR d.id IN (SELECT device_id FROM factory_visible_devices WHERE factory_id = d.factory_id)
 			      )
-			ORDER BY d.vid, d.pid`, c.UserID, c.UserID, c.UserID)
+			ORDER BY d.vid, d.pid`, c.UserID)
 	}
 	if err != nil {
 		writeErr(w, 500, "db error")
@@ -252,6 +252,12 @@ func (h *DeviceHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id, _ := res.LastInsertId()
+	// If this factory already has a visible-device whitelist, auto-add the new device to it
+	// so employees can see it immediately without manual reconfiguration.
+	var wlCount int
+	if err := h.db.QueryRow(`SELECT COUNT(*) FROM factory_visible_devices WHERE factory_id=?`, in.FactoryID).Scan(&wlCount); err == nil && wlCount > 0 {
+		_, _ = h.db.Exec(`INSERT OR IGNORE INTO factory_visible_devices (factory_id, device_id) VALUES (?,?)`, in.FactoryID, id)
+	}
 	h.audit(c.UserID, "device.create", fmt.Sprintf("%s-%s", vid, pid), in.Name)
 	writeJSON(w, 201, map[string]any{"id": id})
 }
@@ -436,13 +442,13 @@ func (h *DeviceHandler) canSeeDevice(c *auth.Claims, deviceID int64, factoryID *
 		return false
 	}
 	if c.Role == models.RoleUser {
-		// If a whitelist exists, the device must be in it.
+		// If a factory-level whitelist exists, the device must be in it.
 		var wl int
-		_ = h.db.QueryRow(`SELECT COUNT(*) FROM user_devices WHERE user_id=?`, c.UserID).Scan(&wl)
+		_ = h.db.QueryRow(`SELECT COUNT(*) FROM factory_visible_devices WHERE factory_id=?`, *factoryID).Scan(&wl)
 		if wl > 0 {
 			var ok int
-			_ = h.db.QueryRow(`SELECT COUNT(*) FROM user_devices WHERE user_id=? AND device_id=?`,
-				c.UserID, deviceID).Scan(&ok)
+			_ = h.db.QueryRow(`SELECT COUNT(*) FROM factory_visible_devices WHERE factory_id=? AND device_id=?`,
+				*factoryID, deviceID).Scan(&ok)
 			return ok > 0
 		}
 	}

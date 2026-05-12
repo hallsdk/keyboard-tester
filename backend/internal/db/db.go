@@ -27,12 +27,14 @@ func Open(path string) (*sql.DB, error) {
 
 const schema = `
 CREATE TABLE IF NOT EXISTS users (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    username      TEXT UNIQUE NOT NULL,
-    password_hash TEXT NOT NULL,
-    role          TEXT NOT NULL CHECK(role IN ('user','admin','super_admin')),
-    created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
-    last_login    DATETIME
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    username           TEXT UNIQUE NOT NULL,
+    password_hash      TEXT NOT NULL,
+    role               TEXT NOT NULL CHECK(role IN ('user','admin','super_admin')),
+    status             TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('pending','active')),
+    pending_factory_id INTEGER REFERENCES factories(id) ON DELETE SET NULL,
+    created_at         DATETIME DEFAULT CURRENT_TIMESTAMP,
+    last_login         DATETIME
 );
 
 CREATE TABLE IF NOT EXISTS factories (
@@ -67,6 +69,12 @@ CREATE TABLE IF NOT EXISTS user_devices (
     PRIMARY KEY (user_id, device_id)
 );
 
+CREATE TABLE IF NOT EXISTS factory_visible_devices (
+    factory_id INTEGER NOT NULL REFERENCES factories(id) ON DELETE CASCADE,
+    device_id  INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    PRIMARY KEY (factory_id, device_id)
+);
+
 CREATE TABLE IF NOT EXISTS audit_log (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id    INTEGER REFERENCES users(id) ON DELETE SET NULL,
@@ -89,6 +97,12 @@ func Migrate(db *sql.DB) error {
 		return err
 	}
 	if err := migrateUniqueVidPidPerFactory(db); err != nil {
+		return err
+	}
+	if err := migrateAddUserStatus(db); err != nil {
+		return err
+	}
+	if err := migrateAddFactoryVisibleDevices(db); err != nil {
 		return err
 	}
 	return nil
@@ -183,6 +197,59 @@ func migrateUniqueVidPidPerFactory(db *sql.DB) error {
 		return fmt.Errorf("migration rename devices: %w", err)
 	}
 	log.Println("migration: changed devices unique constraint to (vid, pid, factory_id)")
+	return nil
+}
+
+// migrateAddUserStatus adds status and pending_factory_id columns to users if missing.
+func migrateAddUserStatus(db *sql.DB) error {
+	rows, err := db.Query(`PRAGMA table_info(users)`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	hasStatus, hasPFID := false, false
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull int
+		var dflt sql.NullString
+		var pk int
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			return err
+		}
+		if name == "status" {
+			hasStatus = true
+		}
+		if name == "pending_factory_id" {
+			hasPFID = true
+		}
+	}
+	if !hasStatus {
+		if _, err := db.Exec(`ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'active'`); err != nil {
+			return err
+		}
+		log.Println("migration: added users.status column")
+	}
+	if !hasPFID {
+		if _, err := db.Exec(`ALTER TABLE users ADD COLUMN pending_factory_id INTEGER REFERENCES factories(id) ON DELETE SET NULL`); err != nil {
+			return err
+		}
+		log.Println("migration: added users.pending_factory_id column")
+	}
+	return nil
+}
+
+// migrateAddFactoryVisibleDevices creates the factory_visible_devices table if missing.
+func migrateAddFactoryVisibleDevices(db *sql.DB) error {
+	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS factory_visible_devices (
+		factory_id INTEGER NOT NULL REFERENCES factories(id) ON DELETE CASCADE,
+		device_id  INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+		PRIMARY KEY (factory_id, device_id)
+	)`)
+	if err != nil {
+		return err
+	}
+	log.Println("migration: ensured factory_visible_devices table")
 	return nil
 }
 

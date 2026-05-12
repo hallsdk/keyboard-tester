@@ -10,7 +10,6 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/hallsdk/ktester-backend/internal/auth"
-	"github.com/hallsdk/ktester-backend/internal/models"
 )
 
 type AuthHandler struct {
@@ -28,7 +27,11 @@ type credentials struct {
 }
 
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
-	var in credentials
+	var in struct {
+		Username  string `json:"username"`
+		Password  string `json:"password"`
+		FactoryID int64  `json:"factory_id"`
+	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		writeErr(w, 400, "invalid json")
 		return
@@ -42,14 +45,27 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, "password too short (min 6)")
 		return
 	}
+	if in.FactoryID == 0 {
+		writeErr(w, 400, "factory_id required")
+		return
+	}
+	// Verify factory exists.
+	var fn string
+	if err := h.db.QueryRow(`SELECT name FROM factories WHERE id=?`, in.FactoryID).Scan(&fn); errors.Is(err, sql.ErrNoRows) {
+		writeErr(w, 400, "factory not found")
+		return
+	} else if err != nil {
+		writeErr(w, 500, "db error")
+		return
+	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(in.Password), bcrypt.DefaultCost)
 	if err != nil {
 		writeErr(w, 500, "hash error")
 		return
 	}
-	res, err := h.db.Exec(
-		`INSERT INTO users (username, password_hash, role) VALUES (?,?, 'user')`,
-		in.Username, string(hash))
+	_, err = h.db.Exec(
+		`INSERT INTO users (username, password_hash, role, status, pending_factory_id) VALUES (?,?,'user','pending',?)`,
+		in.Username, string(hash), in.FactoryID)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") {
 			writeErr(w, 409, "username already exists")
@@ -58,12 +74,10 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, "db error")
 		return
 	}
-	id, _ := res.LastInsertId()
-	token, _, _ := h.jwt.Issue(id, in.Username, models.RoleUser)
 	writeJSON(w, 201, map[string]any{
-		"token":    token,
-		"username": in.Username,
-		"role":     models.RoleUser,
+		"status":       "pending",
+		"message":      "\u6ce8\u518c\u6210\u529f\uff0c\u8bf7\u7b49\u5f85\u7ba1\u7406\u5458\u5ba1\u6838",
+		"factory_name": fn,
 	})
 }
 
@@ -78,11 +92,12 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		hash     string
 		role     string
 		username string
+		status   string
 	)
 	err := h.db.QueryRow(
-		`SELECT id, username, password_hash, role FROM users WHERE username = ?`,
+		`SELECT id, username, password_hash, role, status FROM users WHERE username = ?`,
 		strings.TrimSpace(in.Username),
-	).Scan(&id, &username, &hash, &role)
+	).Scan(&id, &username, &hash, &role, &status)
 	if errors.Is(err, sql.ErrNoRows) {
 		writeErr(w, 401, "invalid credentials")
 		return
@@ -92,6 +107,10 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	if bcrypt.CompareHashAndPassword([]byte(hash), []byte(in.Password)) != nil {
 		writeErr(w, 401, "invalid credentials")
+		return
+	}
+	if status == "pending" {
+		writeErr(w, 403, "\u8d26\u53f7\u5f85\u5ba1\u6838\uff0c\u8bf7\u8054\u7cfb\u7ba1\u7406\u5458")
 		return
 	}
 	_, _ = h.db.Exec(`UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?`, id)

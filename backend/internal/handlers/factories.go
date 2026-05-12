@@ -303,3 +303,110 @@ func (h *FactoryHandler) GetUserDevices(w http.ResponseWriter, r *http.Request) 
 	}
 	writeJSON(w, 200, map[string]any{"device_ids": out})
 }
+
+// GetFactoryVisibleDevices returns the device IDs in the factory-level whitelist.
+// Empty list means all factory devices are visible.
+func (h *FactoryHandler) GetFactoryVisibleDevices(w http.ResponseWriter, r *http.Request) {
+	fid, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeErr(w, 400, "bad id")
+		return
+	}
+	c := auth.ClaimsFrom(r)
+	if c.Role != models.RoleSuperAdmin {
+		var n int
+		if err := h.db.QueryRow(`SELECT COUNT(*) FROM user_factories WHERE user_id=? AND factory_id=?`,
+			c.UserID, fid).Scan(&n); err != nil || n == 0 {
+			writeErr(w, 403, "not your factory")
+			return
+		}
+	}
+	rows, err := h.db.Query(`SELECT device_id FROM factory_visible_devices WHERE factory_id=?`, fid)
+	if err != nil {
+		writeErr(w, 500, "db error")
+		return
+	}
+	defer rows.Close()
+	out := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			writeErr(w, 500, "scan error")
+			return
+		}
+		out = append(out, id)
+	}
+	writeJSON(w, 200, map[string]any{"device_ids": out})
+}
+
+// SetFactoryVisibleDevices replaces the factory-level device whitelist.
+// Sending an empty list clears the whitelist (all devices become visible).
+func (h *FactoryHandler) SetFactoryVisibleDevices(w http.ResponseWriter, r *http.Request) {
+	fid, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeErr(w, 400, "bad id")
+		return
+	}
+	c := auth.ClaimsFrom(r)
+	if c.Role != models.RoleSuperAdmin {
+		var n int
+		if err := h.db.QueryRow(`SELECT COUNT(*) FROM user_factories WHERE user_id=? AND factory_id=?`,
+			c.UserID, fid).Scan(&n); err != nil || n == 0 {
+			writeErr(w, 403, "not your factory")
+			return
+		}
+	}
+	var in struct {
+		DeviceIDs []int64 `json:"device_ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		writeErr(w, 400, "invalid json")
+		return
+	}
+	tx, err := h.db.Begin()
+	if err != nil {
+		writeErr(w, 500, "db error")
+		return
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`DELETE FROM factory_visible_devices WHERE factory_id=?`, fid); err != nil {
+		writeErr(w, 500, "db error")
+		return
+	}
+	for _, did := range in.DeviceIDs {
+		if _, err := tx.Exec(`INSERT OR IGNORE INTO factory_visible_devices (factory_id, device_id) VALUES (?,?)`, fid, did); err != nil {
+			writeErr(w, 400, "invalid device_id: "+strconv.FormatInt(did, 10))
+			return
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		writeErr(w, 500, "db error")
+		return
+	}
+	audit(h.db, c.UserID, "factory.set_visible_devices", strconv.FormatInt(fid, 10), "")
+	writeJSON(w, 200, map[string]string{"status": "ok"})
+}
+
+// ListPublic returns factory id+name for use on the registration page (no auth required).
+func (h *FactoryHandler) ListPublic(w http.ResponseWriter, r *http.Request) {
+	rows, err := h.db.Query(`SELECT id, name FROM factories ORDER BY id`)
+	if err != nil {
+		writeErr(w, 500, "db error")
+		return
+	}
+	defer rows.Close()
+	type item struct {
+		ID   int64  `json:"id"`
+		Name string `json:"name"`
+	}
+	out := []item{}
+	for rows.Next() {
+		var v item
+		if err := rows.Scan(&v.ID, &v.Name); err != nil {
+			writeErr(w, 500, "scan error")
+			return
+		}
+		out = append(out, v)
+	}
+	writeJSON(w, 200, out)
+}

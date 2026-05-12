@@ -162,7 +162,6 @@ function renderLogin(view) {
       localStorage.setItem("ktester_token", j.token);
       state.me = null;
       location.hash = "#/devices";
-      render();
     } catch (e) { toast(e.message, true); }
   };
 }
@@ -177,24 +176,40 @@ function renderRegister(view) {
       </div>
       <label>用户名 (3-32)</label><input id="u" />
       <label>密码 (≥6)</label><input id="p" type="password" />
-      <div style="margin-top:14px"><button id="ok" style="width:100%">注册并登录</button></div>
+      <label>选择所属工厂</label>
+      <select id="fac"><option value="">加载中...</option></select>
+      <div style="margin-top:14px"><button id="ok" style="width:100%">提交注册申请</button></div>
       <p class="muted" style="text-align:center; margin-top:10px">
-        新账号默认为 <b>普通用户</b>，仅可查看配列。
+        注册后需等待工厂管理员审核激活。
       </p>
+      <div id="pending-msg" style="display:none;text-align:center;padding:12px 0">
+        <b>注册申请已提交！</b><br>
+        <span class="muted">请等待管理员审核，审核通过后即可登录。</span><br><br>
+        <button id="go-login" class="ghost">返回登录</button>
+      </div>
     </div>`);
   view.appendChild(box);
   box.querySelector("#tabL").onclick = () => location.hash = "#/login";
-  box.querySelector("#ok").onclick = async () => {
+  // Load factory list.
+  (async () => {
     try {
-      const j = await api("/api/auth/register", {
+      const facs = await api("/api/factories/public");
+      const sel = box.querySelector("#fac");
+      sel.innerHTML = `<option value="">-- 请选择工厂 --</option>` +
+        (facs || []).map(f => `<option value="${f.id}">${escapeHtml(f.name)}</option>`).join("");
+    } catch (e) { box.querySelector("#fac").innerHTML = `<option value="">（加载失败）</option>`; }
+  })();
+  box.querySelector("#ok").onclick = async () => {
+    const fid = parseInt(box.querySelector("#fac").value, 10);
+    if (!fid) { toast("请选择工厂", true); return; }
+    try {
+      await api("/api/auth/register", {
         method: "POST",
-        body: { username: box.querySelector("#u").value, password: box.querySelector("#p").value },
+        body: { username: box.querySelector("#u").value, password: box.querySelector("#p").value, factory_id: fid },
       });
-      state.token = j.token;
-      localStorage.setItem("ktester_token", j.token);
-      state.me = null;
-      location.hash = "#/devices";
-      render();
+      box.querySelector("#ok").style.display = "none";
+      box.querySelector("#pending-msg").style.display = "";
+      box.querySelector("#go-login").onclick = () => { location.hash = "#/login"; };
     } catch (e) { toast(e.message, true); }
   };
 }
@@ -335,12 +350,28 @@ async function renderUsers(view) {
   view.innerHTML = `<div class="card">
     <h2>用户管理</h2>
     <div id="list">加载中...</div>
-    ${isSuper ? `<div style="margin-top:14px"><button id="add">+ 新增用户</button></div>` : ""}
+    <div style="margin-top:14px" class="actions">
+      ${isSuper ? `<button id="add">+ 新增用户</button>` : ""}
+      ${isAdmin ? `<button id="addEmp" class="ghost">+ 新增员工</button>` : ""}
+    </div>
+  </div>
+  <div class="card" style="margin-top:18px">
+    <h2>工厂可见设备</h2>
+    <p class="muted" style="margin:4px 0 10px">统一设置该工厂员工可以看到哪些设备（不选则全部可见）</p>
+    <div id="fac-dev-list">加载中...</div>
+  </div>
+  <div class="card" style="margin-top:18px">
+    <h2>待审核注册 <span id="pending-count" class="muted"></span></h2>
+    <div id="pending-list">加载中...</div>
   </div>`;
   if (isSuper) view.querySelector("#add").onclick = () => editUserDialog(null);
+  if (isAdmin) view.querySelector("#addEmp").onclick = () => editEmployeeDialog();
   try {
     await loadFactories();
-    const list = await api("/api/users");
+    const [list, pending] = await Promise.all([
+      api("/api/users"),
+      api("/api/users/pending"),
+    ]);
     const tbl = `
       <table>
         <thead><tr>
@@ -360,7 +391,6 @@ async function renderUsers(view) {
               <td class="muted">${(u.last_login||"").slice(0,19).replace("T"," ")}</td>
               <td class="actions">
                 ${isSuper ? `<button class="ghost" data-edit="${u.id}">编辑</button>` : ""}
-                ${(isAdmin && u.role==="user") ? `<button class="ghost" data-wl="${u.id}">可见设备</button>` : ""}
                 ${(isSuper && u.id !== state.me.id) ? `<button class="danger" data-del="${u.id}" data-name="${escapeHtml(u.username)}">删除</button>` : ""}
               </td>
             </tr>`).join("")}
@@ -371,14 +401,67 @@ async function renderUsers(view) {
     view.querySelectorAll("[data-edit]").forEach(b => b.onclick = () => {
       const u = list.find(x => x.id == b.dataset.edit); editUserDialog(u);
     });
-    view.querySelectorAll("[data-wl]").forEach(b => b.onclick = () => {
-      const u = list.find(x => x.id == b.dataset.wl); editUserDevicesDialog(u);
-    });
     view.querySelectorAll("[data-del]").forEach(b => b.onclick = async () => {
       if (!confirm(`确定删除用户 ${b.dataset.name}？`)) return;
       try { await api("/api/users/" + b.dataset.del, { method: "DELETE" }); toast("已删除"); renderUsers(view); }
       catch (e) { toast(e.message, true); }
     });
+    // Factory visible devices section — one block per factory admin manages.
+    const myFacs = state.factories || [];
+    if (myFacs.length === 0) {
+      view.querySelector("#fac-dev-list").innerHTML = `<p class="muted">暂无工厂</p>`;
+    } else {
+      const facDevHtml = myFacs.map(f =>
+        `<div style="margin-bottom:10px">
+          <b>${escapeHtml(f.name)}</b>
+          <button class="ghost" style="margin-left:8px" data-fac-dev="${f.id}">设置可见设备</button>
+          <span class="muted" id="fac-dev-summary-${f.id}"></span>
+        </div>`
+      ).join("");
+      view.querySelector("#fac-dev-list").innerHTML = facDevHtml;
+      // Load summaries.
+      for (const f of myFacs) {
+        api(`/api/factories/${f.id}/devices`).then(j => {
+          const el = view.querySelector(`#fac-dev-summary-${f.id}`);
+          if (el) el.textContent = (j.device_ids||[]).length === 0 ? "（全部可见）" : `（已限制 ${j.device_ids.length} 个）`;
+        }).catch(() => {});
+      }
+      view.querySelectorAll("[data-fac-dev]").forEach(b => b.onclick = () => {
+        const f = myFacs.find(x => x.id == b.dataset.facDev); editFactoryDevicesDialog(f);
+      });
+    }
+    // Pending section.
+    if ((pending||[]).length === 0) {
+      view.querySelector("#pending-list").innerHTML = `<p class="muted">暂无待审核用户</p>`;
+    } else {
+      view.querySelector("#pending-count").textContent = `(${pending.length})`;
+      const ptbl = `<table>
+        <thead><tr><th>ID</th><th>用户名</th><th>申请工厂</th><th>注册时间</th><th>操作</th></tr></thead>
+        <tbody>
+          ${pending.map(u => `
+            <tr>
+              <td>${u.id}</td>
+              <td><b>${escapeHtml(u.username)}</b></td>
+              <td>${escapeHtml(factoryName(u.pending_factory_id))}</td>
+              <td class="muted">${(u.created_at||"").slice(0,19).replace("T"," ")}</td>
+              <td class="actions">
+                <button class="ghost" data-approve="${u.id}" data-name="${escapeHtml(u.username)}">通过</button>
+                <button class="danger" data-reject="${u.id}" data-name="${escapeHtml(u.username)}">拒绝</button>
+              </td>
+            </tr>`).join("")}
+        </tbody></table>`;
+      view.querySelector("#pending-list").innerHTML = ptbl;
+      view.querySelectorAll("[data-approve]").forEach(b => b.onclick = async () => {
+        if (!confirm(`通过用户 ${b.dataset.name} 的注册申请？`)) return;
+        try { await api(`/api/users/${b.dataset.approve}/approve`, { method: "PUT" }); toast("已审核通过"); renderUsers(view); }
+        catch (e) { toast(e.message, true); }
+      });
+      view.querySelectorAll("[data-reject]").forEach(b => b.onclick = async () => {
+        if (!confirm(`拒绝用户 ${b.dataset.name} 的注册申请并删除该账号？`)) return;
+        try { await api(`/api/users/${b.dataset.reject}/reject`, { method: "PUT" }); toast("已拒绝"); renderUsers(view); }
+        catch (e) { toast(e.message, true); }
+      });
+    }
   } catch (e) {
     view.querySelector("#list").innerHTML = `<p class="muted">加载失败: ${escapeHtml(e.message)}</p>`;
   }
@@ -390,6 +473,88 @@ function renderFactoryMulti(selected) {
   return facs.map(f =>
     `<label class="chip"><input type="checkbox" value="${f.id}" ${selected.includes(f.id) ? "checked" : ""}/><span>${escapeHtml(f.name)}</span></label>`
   ).join("");
+}
+
+// Admin creates a regular user in their own factory.
+function editEmployeeDialog() {
+  const view = document.getElementById("view");
+  const isSuper = state.me.role === "super_admin";
+  const myFactories = state.factories || [];
+  // For non-super admin, factory is fixed to their only factory.
+  const fixedFactory = !isSuper ? myFactories[0] : null;
+  view.innerHTML = `
+    <div class="card" style="max-width:480px;margin:0 auto">
+      <h2>\u65b0\u589e\u5458\u5de5</h2>
+      <label>\u7528\u6237\u540d (3-32)</label><input id="u"/>
+      <label>\u5bc6\u7801 (\u22656)</label><input id="p" type="password"/>
+      ${isSuper ? `
+      <label>\u6240\u5c5e\u5de5\u5382</label>
+      <select id="fac">
+        ${myFactories.map(f => `<option value="${f.id}">${escapeHtml(f.name)}</option>`).join("")}
+      </select>` : `
+      <label>\u6240\u5c5e\u5de5\u5382</label>
+      <p style="margin:4px 0 8px">${escapeHtml(fixedFactory ? fixedFactory.name : "")}</p>`}
+      <div style="margin-top:14px" class="actions">
+        <button id="ok">\u521b\u5efa</button>
+        <button class="ghost" id="cancel">\u53d6\u6d88</button>
+      </div>
+    </div>`;
+  view.querySelector("#cancel").onclick = () => renderUsers(view);
+  view.querySelector("#ok").onclick = async () => {
+    const fid = isSuper
+      ? parseInt(view.querySelector("#fac").value, 10)
+      : (fixedFactory ? fixedFactory.id : 0);
+    if (!fid) { toast("\u6ca1\u6709\u53ef\u7528\u5de5\u5382", true); return; }
+    try {
+      await api("/api/users", {
+        method: "POST",
+        body: { username: view.querySelector("#u").value, password: view.querySelector("#p").value, role: "user", factory_ids: [fid] },
+      });
+      toast("\u5458\u5de5\u5df2\u521b\u5efa");
+      await renderUsers(view);
+    } catch (e) { toast(e.message, true); }
+  };
+}
+
+// Admin sets which devices are visible to all users of a factory.
+async function editFactoryDevicesDialog(factory) {
+  const view = document.getElementById("view");
+  view.innerHTML = `<div class="card" style="max-width:600px;margin:0 auto">
+    <h2>${escapeHtml(factory.name)} — 可见设备</h2>
+    <p class="muted">勾选员工可见的设备；不勾选任何设备则默认全部可见。</p>
+    <div id="dev-list">加载中...</div>
+    <div style="margin-top:14px" class="actions">
+      <button id="ok">保存</button>
+      <button class="ghost" id="cancel">取消</button>
+    </div>
+  </div>`;
+  view.querySelector("#cancel").onclick = () => renderUsers(view);
+  try {
+    const [allDevs, curJ] = await Promise.all([
+      api("/api/devices"),
+      api(`/api/factories/${factory.id}/devices`),
+    ]);
+    const cur = new Set((curJ.device_ids || []));
+    const facDevs = (allDevs || []).filter(d => d.factory_id === factory.id);
+    if (facDevs.length === 0) {
+      view.querySelector("#dev-list").innerHTML = `<p class="muted">该工厂暂无设备</p>`;
+    } else {
+      view.querySelector("#dev-list").innerHTML = facDevs.map(d =>
+        `<label class="chip"><input type="checkbox" value="${d.id}" ${cur.has(d.id) ? "checked" : ""}/>` +
+        `<span>${escapeHtml(d.name)} <span class="muted">${d.vid}-${d.pid}</span></span></label>`
+      ).join("");
+    }
+    view.querySelector("#ok").onclick = async () => {
+      const ids = [...view.querySelectorAll("#dev-list input:checked")].map(c => parseInt(c.value, 10));
+      try {
+        await api(`/api/factories/${factory.id}/devices`, { method: "PUT", body: { device_ids: ids } });
+        toast("已保存");
+        await renderUsers(view);
+      } catch (e) { toast(e.message, true); }
+    };
+  } catch (e) {
+    view.querySelector("#dev-list").innerHTML = `<p class="muted">加载失败: ${escapeHtml(e.message)}</p>`;
+  }
 }
 
 function editUserDialog(existing) {
