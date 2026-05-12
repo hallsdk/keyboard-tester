@@ -81,7 +81,7 @@ mkdir -p "$DST"
 STAMP=$(date +%Y%m%d-%H%M%S)
 TMP="$(mktemp -d)"
 # Hot-copy sqlite via .backup so it's consistent.
-docker exec ktester sh -c "wget -q -O- http://127.0.0.1:8080/" >/dev/null 2>&1 || true
+docker exec ktester sh -c "wget -q -O- http://127.0.0.1:3030/" >/dev/null 2>&1 || true
 cp -a "$SRC" "$TMP/data"
 tar -czf "$DST/ktester-$STAMP.tar.gz" -C "$TMP" data
 rm -rf "$TMP"

@@ -1,5 +1,8 @@
 # Multi-stage build — produces a tiny image with just the binary + web assets.
 FROM golang:1.22-alpine AS build
+# Use China-friendly Go module proxy so `go mod download` works on servers
+# that cannot reach the default proxy.golang.org.
+ENV GOPROXY=https://goproxy.cn,direct
 WORKDIR /src
 # Cache deps
 COPY go.mod go.sum* ./
@@ -14,6 +17,6 @@ COPY --from=build /out/ktester /app/ktester
 COPY --from=build /src/web /app/web
 RUN mkdir -p /app/data && chown -R app:app /app
 USER app
-EXPOSE 8080
-ENV LISTEN_ADDR=":8080" DATA_DIR="/app/data"
+EXPOSE 3030
+ENV LISTEN_ADDR=":3030" DATA_DIR="/app/data"
 ENTRYPOINT ["/app/ktester"]

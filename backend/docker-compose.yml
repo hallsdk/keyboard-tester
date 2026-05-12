@@ -6,9 +6,9 @@ services:
     restart: unless-stopped
     # Bind to 127.0.0.1 only — nginx on the host will proxy in.
     ports:
-      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:3030:3030"
     environment:
-      LISTEN_ADDR: ":8080"
+      LISTEN_ADDR: ":3030"
       DATA_DIR: "/app/data"
       JWT_SECRET: "${JWT_SECRET}"
       SUPER_ADMIN_USER: "${SUPER_ADMIN_USER}"
@@ -16,7 +16,7 @@ services:
     volumes:
       - ./data:/app/data
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8080/"]
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:3030/"]
       interval: 30s
       timeout: 5s
       retries: 3
