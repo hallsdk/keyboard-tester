@@ -24,31 +24,41 @@ func NewUserHandler(db *sql.DB) *UserHandler {
 }
 
 type userOut struct {
-	ID        int64   `json:"id"`
-	Username  string  `json:"username"`
-	Role      string  `json:"role"`
-	CreatedAt string  `json:"created_at"`
-	LastLogin *string `json:"last_login,omitempty"`
+	ID         int64   `json:"id"`
+	Username   string  `json:"username"`
+	Role       string  `json:"role"`
+	CreatedAt  string  `json:"created_at"`
+	LastLogin  *string `json:"last_login,omitempty"`
+	FactoryIDs []int64 `json:"factory_ids"`
 }
 
 // List:
 //   - super_admin sees ALL users
-//   - admin sees user + admin (super_admins are HIDDEN by design)
+//   - admin sees users sharing at least one factory with them (super_admins hidden)
 func (h *UserHandler) List(w http.ResponseWriter, r *http.Request) {
 	c := auth.ClaimsFrom(r)
-	q := `SELECT id, username, role, created_at, last_login FROM users`
-	args := []any{}
-	if c.Role != models.RoleSuperAdmin {
-		q += ` WHERE role != 'super_admin'`
+	var (
+		rows *sql.Rows
+		err  error
+	)
+	if c.Role == models.RoleSuperAdmin {
+		rows, err = h.db.Query(`SELECT id, username, role, created_at, last_login FROM users ORDER BY id`)
+	} else {
+		rows, err = h.db.Query(`
+			SELECT DISTINCT u.id, u.username, u.role, u.created_at, u.last_login
+			FROM users u
+			JOIN user_factories uf ON uf.user_id = u.id
+			WHERE u.role != 'super_admin'
+			  AND uf.factory_id IN (SELECT factory_id FROM user_factories WHERE user_id = ?)
+			ORDER BY u.id`, c.UserID)
 	}
-	q += ` ORDER BY id`
-	rows, err := h.db.Query(q, args...)
 	if err != nil {
 		writeErr(w, 500, "db error")
 		return
 	}
 	defer rows.Close()
 	out := []userOut{}
+	ids := []int64{}
 	for rows.Next() {
 		var u userOut
 		var last sql.NullString
@@ -60,18 +70,48 @@ func (h *UserHandler) List(w http.ResponseWriter, r *http.Request) {
 			s := last.String
 			u.LastLogin = &s
 		}
+		u.FactoryIDs = []int64{}
 		out = append(out, u)
+		ids = append(ids, u.ID)
+	}
+	// Attach factory_ids in one extra query.
+	if len(ids) > 0 {
+		idx := make(map[int64]*userOut, len(out))
+		for i := range out {
+			idx[out[i].ID] = &out[i]
+		}
+		// Build IN clause.
+		placeholders := strings.Repeat("?,", len(ids))
+		placeholders = placeholders[:len(placeholders)-1]
+		args := make([]any, len(ids))
+		for i, id := range ids {
+			args[i] = id
+		}
+		q := `SELECT user_id, factory_id FROM user_factories WHERE user_id IN (` + placeholders + `)`
+		r2, err := h.db.Query(q, args...)
+		if err == nil {
+			defer r2.Close()
+			for r2.Next() {
+				var uid, fid int64
+				if err := r2.Scan(&uid, &fid); err == nil {
+					if u := idx[uid]; u != nil {
+						u.FactoryIDs = append(u.FactoryIDs, fid)
+					}
+				}
+			}
+		}
 	}
 	writeJSON(w, 200, out)
 }
 
 type createUserInput struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
-	Role     string `json:"role"`
+	Username   string  `json:"username"`
+	Password   string  `json:"password"`
+	Role       string  `json:"role"`
+	FactoryIDs []int64 `json:"factory_ids"`
 }
 
-// Create: super_admin only. Can pick any role including super_admin.
+// Create: super_admin only. Can pick any role. Must provide factory_ids for user/admin.
 func (h *UserHandler) Create(w http.ResponseWriter, r *http.Request) {
 	c := auth.ClaimsFrom(r)
 	var in createUserInput
@@ -88,12 +128,26 @@ func (h *UserHandler) Create(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, "username>=3 password>=6")
 		return
 	}
+	if in.Role == models.RoleUser && len(in.FactoryIDs) != 1 {
+		writeErr(w, 400, "user role requires exactly one factory_id")
+		return
+	}
+	if in.Role == models.RoleAdmin && len(in.FactoryIDs) == 0 {
+		writeErr(w, 400, "admin role requires at least one factory_id")
+		return
+	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(in.Password), bcrypt.DefaultCost)
 	if err != nil {
 		writeErr(w, 500, "hash error")
 		return
 	}
-	res, err := h.db.Exec(`INSERT INTO users (username, password_hash, role) VALUES (?,?,?)`,
+	tx, err := h.db.Begin()
+	if err != nil {
+		writeErr(w, 500, "db error")
+		return
+	}
+	defer tx.Rollback()
+	res, err := tx.Exec(`INSERT INTO users (username, password_hash, role) VALUES (?,?,?)`,
 		in.Username, string(hash), in.Role)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") {
@@ -104,6 +158,16 @@ func (h *UserHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id, _ := res.LastInsertId()
+	for _, fid := range in.FactoryIDs {
+		if _, err := tx.Exec(`INSERT INTO user_factories (user_id, factory_id) VALUES (?,?)`, id, fid); err != nil {
+			writeErr(w, 400, "invalid factory_id: "+strconv.FormatInt(fid, 10))
+			return
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		writeErr(w, 500, "db error")
+		return
+	}
 	audit(h.db, c.UserID, "user.create", strconv.FormatInt(id, 10),
 		in.Username+" as "+in.Role)
 	writeJSON(w, 201, map[string]any{"id": id})
