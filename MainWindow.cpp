@@ -1865,6 +1865,10 @@ void MainWindow::onServerSyncList()
     }
     appendLog(QString("[Server] 同步完成: %1 / %2 成功").arg(ok).arg(list.size()));
     reloadVidPidList();
+    // Trigger load for the current selection (reloadVidPidList blocks signals).
+    if (m_vidpid && m_vidpid->count() > 0) {
+        onVidPidChanged(m_vidpid->currentText());
+    }
     QMessageBox::information(this, "同步设备列表",
         QString("已同步 %1 / %2 个设备的配列到 layouts/").arg(ok).arg(list.size()));
 }

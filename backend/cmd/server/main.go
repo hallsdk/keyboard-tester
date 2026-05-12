@@ -48,6 +48,7 @@ func main() {
 	authH := handlers.NewAuthHandler(database, jwtMgr)
 	devH := handlers.NewDeviceHandler(database, filepath.Join(cfg.DataDir, "layouts"))
 	userH := handlers.NewUserHandler(database)
+	factH := handlers.NewFactoryHandler(database)
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -91,19 +92,32 @@ func main() {
 			})
 
 			// User management:
-			//   GET  /users        — admin+ (super_admins are hidden from non-super)
-			//   POST /users        — super_admin only
-			//   PUT  /users/{id}   — super_admin only
-			//   DEL  /users/{id}   — super_admin only
+			//   GET  /users                       — admin+ (scoped by shared factories)
+			//   POST /users                       — super_admin only
+			//   PUT  /users/{id}                  — super_admin only
+			//   DEL  /users/{id}                  — super_admin only
+			//   GET  /users/{id}/factories        — admin+ (super_admin assigns)
+			//   PUT  /users/{id}/factories        — super_admin only
+			//   GET  /users/{id}/devices          — admin+
+			//   PUT  /users/{id}/devices          — admin+ (per-user whitelist)
 			r.Group(func(r chi.Router) {
 				r.Use(auth.RequireRole("admin", "super_admin"))
 				r.Get("/users", userH.List)
+				r.Get("/users/{id}/factories", factH.GetUserFactories)
+				r.Get("/users/{id}/devices", factH.GetUserDevices)
+				r.Put("/users/{id}/devices", factH.SetUserDevices)
+				// Factories: list is visible to admin+ (their own); CRUD restricted below.
+				r.Get("/factories", factH.List)
 			})
 			r.Group(func(r chi.Router) {
 				r.Use(auth.RequireRole("super_admin"))
 				r.Post("/users", userH.Create)
 				r.Put("/users/{id}", userH.Update)
 				r.Delete("/users/{id}", userH.Delete)
+				r.Put("/users/{id}/factories", factH.SetUserFactories)
+				r.Post("/factories", factH.Create)
+				r.Put("/factories/{id}", factH.Update)
+				r.Delete("/factories/{id}", factH.Delete)
 			})
 		})
 	})

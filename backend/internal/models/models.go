@@ -19,6 +19,7 @@ type User struct {
 
 type Device struct {
 	ID          int64     `json:"id"`
+	FactoryID   *int64    `json:"factory_id,omitempty"`
 	VID         string    `json:"vid"`
 	PID         string    `json:"pid"`
 	Name        string    `json:"name"`
@@ -27,4 +28,10 @@ type Device struct {
 	CreatedBy   *int64    `json:"created_by,omitempty"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type Factory struct {
+	ID        int64     `json:"id"`
+	Name      string    `json:"name"`
+	CreatedAt time.Time `json:"created_at"`
 }
