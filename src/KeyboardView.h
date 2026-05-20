@@ -51,6 +51,12 @@ public:
     void  setKeyDisabled(int index);
     // Replace the visible text on a key (both rectangles if hasSecond).
     void setKeyLabel(int index, const QString& text);
+    // 设置 / 清除 单个按键的实时霍尔电压 (mV). 设为 -1 表示清除.
+    // 文字会以原 label + 换行 + "X.XXV" 的形式显示在按钮上.
+    void setKeyVoltage(int index, int mv);
+    void clearAllVoltages();
+    // 根据 OHID 矩阵坐标找到对应的 keyIndex; 没匹配返回 -1.
+    int  findIndexByRowCol(int row, int col) const;
     // Theme: true = dark (default), false = light.
     void setDarkTheme(bool dark);
     // Convenience: counts.
@@ -79,6 +85,7 @@ private:
     QVector<QPushButton*> m_primaryBtns;
     QVector<QPushButton*> m_secondBtns; // index parallel; entries may be null
     QVector<State>        m_states;
+    QVector<int>          m_voltagesMv; // -1 if unset, else mV
     QHash<uint16_t, int>  m_codeIndex;  // first index per KC code
     bool                  m_darkTheme = true;
 };

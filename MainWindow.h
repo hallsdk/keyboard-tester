@@ -18,6 +18,7 @@ class QPlainTextEdit;
 class QAction;
 class QTimer;
 class QHBoxLayout;
+class QFrame;
 
 class KeyboardView;
 class DeviceManager;
@@ -37,6 +38,7 @@ private slots:
     void onDisconnectClicked();
     void onDeviceConnected(uint32_t board_id);
     void onDeviceDisconnected();
+    void onVoltageChanged(uint16_t mv);
     void onVidPidChanged(const QString& text);
     void onQueryFnLayer();
     void onToggleFnView(bool on);
@@ -85,6 +87,17 @@ private:
     QLabel*         m_statusLayout = nullptr;
     QLabel*         m_statusCount  = nullptr;
     QLabel*         m_statusKey    = nullptr;   // most recent key, incl. multimedia
+    QLabel*         m_statusVoltage = nullptr;  // 电压 (来自 AUTO_RP_HH 上报)
+    // HUD: 大号醒目电压显示 + 平滑/节流
+    QFrame*         m_hud          = nullptr;
+    QLabel*         m_hudVoltVal   = nullptr;   // "0.26"
+    QLabel*         m_hudVoltUnit  = nullptr;   // "V"
+    QLabel*         m_hudVoltCap   = nullptr;   // 标题 "VOLTAGE"
+    QTimer*         m_voltUiTimer  = nullptr;   // 250ms 节流刷新
+    uint16_t        m_voltRawLast  = 0;         // 最近一次原始上报值
+    double          m_voltEma      = 0.0;       // 指数平滑后的 mV
+    bool            m_voltEmaInit  = false;
+    int             m_voltDispMv   = -1;        // 上次显示的 (10mV 量化) 值, 用于防抖
     QPlainTextEdit* m_log          = nullptr;
 
     QPushButton*    m_btnLightR = nullptr;

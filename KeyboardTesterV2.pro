@@ -76,5 +76,6 @@ win32 {
     LAY_DST = $$OUT_DIR/layouts
     LAY_SRC ~= s,/,\\,g
     LAY_DST ~= s,/,\\,g
-    QMAKE_POST_LINK += xcopy /S /E /Y /I \"$$LAY_SRC\" \"$$LAY_DST\"
+    # 仅当源 layouts/ 目录存在时再拷贝, 否则 xcopy 返回非零会导致整个构建失败.
+    QMAKE_POST_LINK += if exist \"$$LAY_SRC\" xcopy /S /E /Y /I \"$$LAY_SRC\" \"$$LAY_DST\"
 }

@@ -164,7 +164,8 @@ bool ApiClient::login(const QString& user, const QString& pw, QString* errMsg)
     QJsonParseError pe;
     const auto doc = QJsonDocument::fromJson(r.body, &pe);
     if (pe.error != QJsonParseError::NoError || !doc.isObject()) {
-        if (errMsg) *errMsg = "登录响应解析失败"; return false;
+        if (errMsg) *errMsg = "登录响应解析失败";
+        return false;
     }
     const auto obj = doc.object();
     QSettings s(kOrg, kApp);

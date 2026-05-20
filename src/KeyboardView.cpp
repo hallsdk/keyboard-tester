@@ -86,6 +86,7 @@ void KeyboardView::clearButtons()
     m_primaryBtns.clear();
     m_secondBtns.clear();
     m_states.clear();
+    m_voltagesMv.clear();
     m_codeIndex.clear();
 }
 
@@ -98,6 +99,7 @@ void KeyboardView::setLayout(const KeyLayout& layout)
     m_primaryBtns.resize(keys.size());
     m_secondBtns.resize(keys.size());
     m_states.resize(keys.size());
+    m_voltagesMv.fill(-1, keys.size());
 
     for (int i = 0; i < keys.size(); ++i) {
         const KeyDef& k = keys.at(i);
@@ -170,6 +172,50 @@ void KeyboardView::setKeyLabel(int index, const QString& text)
     if (index < 0 || index >= m_primaryBtns.size()) return;
     if (m_primaryBtns[index]) m_primaryBtns[index]->setText(text);
     if (m_secondBtns[index])  m_secondBtns[index]->setText(text);
+}
+
+void KeyboardView::setKeyVoltage(int index, int mv)
+{
+    if (index < 0 || index >= m_primaryBtns.size()) return;
+    if (index >= m_voltagesMv.size()) return;
+    // 量化到 10mV, 抑制末位抖动.
+    int q = (mv < 0) ? -1 : ((mv + 5) / 10 * 10);
+    if (m_voltagesMv[index] == q) return;
+    m_voltagesMv[index] = q;
+    const KeyDef* k = keyAt(index);
+    if (!k) return;
+    QString text;
+    if (q < 0) {
+        text = k->label;
+    } else {
+        text = QString("%1\n%2V")
+                   .arg(k->label)
+                   .arg(q / 1000.0, 0, 'f', 2);
+    }
+    if (m_primaryBtns[index]) m_primaryBtns[index]->setText(text);
+    if (m_secondBtns[index])  m_secondBtns[index]->setText(text);
+}
+
+void KeyboardView::clearAllVoltages()
+{
+    for (int i = 0; i < m_voltagesMv.size(); ++i) {
+        if (m_voltagesMv[i] < 0) continue;
+        m_voltagesMv[i] = -1;
+        const KeyDef* k = keyAt(i);
+        if (!k) continue;
+        if (m_primaryBtns[i]) m_primaryBtns[i]->setText(k->label);
+        if (m_secondBtns[i])  m_secondBtns[i]->setText(k->label);
+    }
+}
+
+int KeyboardView::findIndexByRowCol(int row, int col) const
+{
+    const auto& keys = m_layout.keys();
+    for (int i = 0; i < keys.size(); ++i) {
+        const KeyDef& k = keys.at(i);
+        if (k.row == row && k.col == col) return i;
+    }
+    return -1;
 }
 
 int KeyboardView::passedCount() const

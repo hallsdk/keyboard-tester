@@ -25,7 +25,10 @@
 #include <QDesktopServices>
 #include <QUrl>
 #include <QTimer>
+#include <QThread>
 #include <QDialog>
+#include <QFrame>
+#include <QGraphicsDropShadowEffect>
 #include <QScreen>
 #include <QIcon>
 #include <QFile>
@@ -63,6 +66,16 @@ MainWindow::MainWindow(QWidget* parent)
             this, &MainWindow::onDeviceConnected);
     connect(m_dev, &DeviceManager::disconnected,
             this, &MainWindow::onDeviceDisconnected);
+    // 不再使用整盘 max 电压 HUD; 仅订阅 per-key 上报.
+    connect(m_dev, &DeviceManager::keyVoltageChanged,
+            this, [this](int row, int col, uint16_t mv){
+        if (!m_view) return;
+        const int idx = m_view->findIndexByRowCol(row, col);
+        if (idx < 0) return;
+        m_view->setKeyVoltage(idx, (int)mv);
+    });
+    connect(m_dev, &DeviceManager::debugMessage,
+            this, [this](const QString& msg){ appendLog(msg); });
 
     // Global keyboard hook — installed only while a device is connected.
     m_hook = new KeyHook(this);
@@ -254,24 +267,38 @@ void MainWindow::buildUi()
     devH->addStretch(1);
     rootV->addLayout(devH);
 
-    // ====== 状态行 ======
-    auto* statusH = new QHBoxLayout();
-    statusH->setSpacing(20);
+    // ====== HUD 状态面板 (键盘上方醒目区) ======
+    // 左侧 = 设备/布局/按键文字; 右侧 = 大号电压数字, 类似仪表盘.
+    m_hud = new QFrame(central);
+    m_hud->setObjectName("hudPanel");
+    m_hud->setFrameShape(QFrame::NoFrame);
+    auto* hudH = new QHBoxLayout(m_hud);
+    hudH->setContentsMargins(14, 8, 14, 8);
+    hudH->setSpacing(18);
 
-    m_statusLayout = new QLabel("布局: <未加载>", central);
-    m_statusCount  = new QLabel("按键: 0", central);
-    m_statusBoard  = new QLabel("设备: 未连接", central);
-    m_statusKey    = new QLabel("当前按键: —", central);
-    m_statusKey->setMinimumWidth(320);
-    m_statusKey->setStyleSheet("QLabel { color: rgb(180,200,220); font-weight: 600; padding: 2px 8px;"
-                               " border: 1px solid rgb(70,90,110); border-radius: 4px;"
-                               " background-color: rgb(30,38,48); }");
-    statusH->addWidget(m_statusLayout);
-    statusH->addWidget(m_statusCount);
-    statusH->addWidget(m_statusBoard);
-    statusH->addWidget(m_statusKey);
-    statusH->addStretch(1);
-    rootV->addLayout(statusH);
+    // --- 左侧文字组 ---
+    auto* hudTxt = new QVBoxLayout();
+    hudTxt->setSpacing(2);
+    m_statusBoard  = new QLabel("设备: 未连接", m_hud);
+    m_statusLayout = new QLabel("布局: <未加载>", m_hud);
+    m_statusCount  = new QLabel("按键: 0", m_hud);
+    m_statusBoard->setObjectName("hudText");
+    m_statusLayout->setObjectName("hudText");
+    m_statusCount->setObjectName("hudText");
+    hudTxt->addWidget(m_statusBoard);
+    auto* row2 = new QHBoxLayout();
+    row2->setSpacing(14);
+    row2->addWidget(m_statusLayout);
+    row2->addWidget(m_statusCount);
+    row2->addStretch(1);
+    hudTxt->addLayout(row2);
+    // 当前按键 (高亮胶囊)
+    m_statusKey = new QLabel("当前按键: —", m_hud);
+    m_statusKey->setObjectName("hudKey");
+    m_statusKey->setMinimumWidth(340);
+    hudTxt->addWidget(m_statusKey);
+    hudH->addLayout(hudTxt, 1);
+    rootV->addWidget(m_hud);
 
     // ====== 多媒体按键栏 (默认隐藏, 查询过 Fn1 后才显示) ======
     m_mmBar = new QWidget(central);
@@ -427,9 +454,24 @@ void MainWindow::applyTheme(bool dark)
             "background-color: rgb(25,28,33); color: rgb(210,215,220);"
             " font-family: Consolas, 'Courier New', monospace; font-size: 11px;");
         if (m_statusKey) m_statusKey->setStyleSheet(
-            "QLabel { color: rgb(180,200,220); font-weight: 600; padding: 2px 8px;"
-            " border: 1px solid rgb(70,90,110); border-radius: 4px;"
-            " background-color: rgb(30,38,48); }");
+            "QLabel#hudKey { color: rgb(190,220,255); font-weight: 700; padding: 4px 10px;"
+            " border: 1px solid rgb(70,110,160); border-radius: 6px;"
+            " background-color: rgba(40,70,110,160); }");
+        if (m_hud) m_hud->setStyleSheet(
+            "QFrame#hudPanel {"
+            "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0,"
+            "    stop:0 rgb(26,32,44), stop:1 rgb(22,40,46));"
+            "  border: 1px solid rgb(60,100,120); border-radius: 8px; }"
+            "QLabel#hudText { color: rgb(180,205,225); font-size: 12px; font-weight: 600; }"
+            "QFrame#hudSep { color: rgb(70,110,130); }"
+            "QLabel#hudVoltCap { color: rgb(120,200,180); font-size: 11px;"
+            "  font-weight: 700; letter-spacing: 3px; }"
+            "QLabel#hudVoltVal { color: rgb(120,255,210);"
+            "  font-family: 'Consolas','Courier New',monospace;"
+            "  font-size: 38px; font-weight: 700; }"
+            "QLabel#hudVoltUnit { color: rgb(120,255,210);"
+            "  font-family: 'Consolas','Courier New',monospace;"
+            "  font-size: 22px; font-weight: 600; padding-bottom: 6px; }");
         if (m_mmBar) m_mmBar->setStyleSheet(
             "QWidget { background-color: rgb(28,32,42); border: 1px solid rgb(70,40,110);"
             " border-radius: 5px; }"
@@ -468,9 +510,24 @@ void MainWindow::applyTheme(bool dark)
             " font-family: Consolas, 'Courier New', monospace; font-size: 11px;"
             " border: 1px solid rgb(200,203,215);");
         if (m_statusKey) m_statusKey->setStyleSheet(
-            "QLabel { color: rgb(20,60,120); font-weight: 600; padding: 2px 8px;"
-            " border: 1px solid rgb(130,155,200); border-radius: 4px;"
+            "QLabel#hudKey { color: rgb(20,60,120); font-weight: 700; padding: 4px 10px;"
+            " border: 1px solid rgb(130,160,210); border-radius: 6px;"
             " background-color: rgb(220,230,248); }");
+        if (m_hud) m_hud->setStyleSheet(
+            "QFrame#hudPanel {"
+            "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0,"
+            "    stop:0 rgb(232,238,250), stop:1 rgb(228,246,242));"
+            "  border: 1px solid rgb(170,195,215); border-radius: 8px; }"
+            "QLabel#hudText { color: rgb(40,55,85); font-size: 12px; font-weight: 600; }"
+            "QFrame#hudSep { color: rgb(170,195,215); }"
+            "QLabel#hudVoltCap { color: rgb(30,120,100); font-size: 11px;"
+            "  font-weight: 700; letter-spacing: 3px; }"
+            "QLabel#hudVoltVal { color: rgb(20,140,100);"
+            "  font-family: 'Consolas','Courier New',monospace;"
+            "  font-size: 38px; font-weight: 700; }"
+            "QLabel#hudVoltUnit { color: rgb(20,140,100);"
+            "  font-family: 'Consolas','Courier New',monospace;"
+            "  font-size: 22px; font-weight: 600; padding-bottom: 6px; }");
         if (m_mmBar) m_mmBar->setStyleSheet(
             "QWidget { background-color: rgb(230,228,248); border: 1px solid rgb(160,140,210);"
             " border-radius: 5px; }"
@@ -551,6 +608,25 @@ bool MainWindow::loadLayoutFile(const QString& path)
     m_layout = nl;
     m_lastLayoutPath = path;
     m_view->setLayout(m_layout);
+
+    // 把当前 layout 的 (row,col) 序列推给 DeviceManager, 与固件
+    // RP_KEYSH 上报的 mkey 列表对齐 (跳过 decal / 无 row,col 的项,
+    // 以及编码器 KC_ENCODER=0x00FF — 固件的 get_mkey 同样跳过).
+    if (m_dev) {
+        QVector<QPair<int,int>> positions;
+        positions.reserve(m_view->keyCount());
+        for (int i = 0; i < m_view->keyCount(); ++i) {
+            const KeyDef* k = m_view->keyAt(i);
+            if (!k) continue;
+            if (k->decal) continue;
+            if (k->row < 0 || k->col < 0) continue;
+            if (k->code == 0x00FF /*KC_ENCODER*/) continue;
+            positions.append(qMakePair(k->row, k->col));
+        }
+        m_dev->setExternalRpKeyPositions(positions);
+        appendLog(QString("已向 DeviceManager 推送 %1 个按键的 (row,col) 用于电压对齐")
+                  .arg(positions.size()));
+    }
 
     // ----- Fn 键标记为 Disabled (无法通过 OS 检测, 不计入测试目标) -----
     int fnDisabled = 0;
@@ -875,19 +951,37 @@ void MainWindow::onDeviceConnected(uint32_t board_id)
         appendLog("[Connect] 警告: 未能读取上电灯效, 测试结束后将退回默认白光");
     }
 
-    // 连接后自动触发一次 Fn 层读取 (有布局且有可查询按键时).
-    // 延迟到事件循环, 避免在 connected 信号回调内做较长的阻塞 IO.
+    // 连接后自动触发一次 Fn 层读取, 之后再开启按键上报 (电压).
+    // 顺序非常重要: readParamPage 内部会 m_hid.clear() 清空通道, 如果先开启
+    // AUTO_RP_HH 再做 Fn 查询, AUTO_RP_HH 的 ACK / 早期 RP 帧会被一并清掉,
+    // 而且设备会同时收到 PARAM 与 BASE_MIX 两个写指令, 容易混乱.
     QTimer::singleShot(0, this, [this]{
         if (!m_dev || !m_dev->isConnected()) return;
-        if (m_view->keyCount() == 0) return;        // 还未加载布局
-        if (!m_fn1Map.isEmpty()) return;            // 已经查过了
-        appendLog("[Auto] 自动查询 Fn 层 ...");
-        onQueryFnLayer();
+        if (m_view->keyCount() > 0 && m_fn1Map.isEmpty()) {
+            appendLog("[Auto] 自动查询 Fn 层 ...");
+            onQueryFnLayer();
+        }
+        if (!m_dev->isConnected()) return;
+        // delay=100: 上报间隔 100ms (单位由固件定义).
+        if (m_dev->startAutoReport(/*delay*/100, /*timeoutMs*/150)) {
+            appendLog("[AutoRP] 已开启按键上报 (实时电压, 100)");
+        } else {
+            appendLog("[AutoRP] 警告: 开启按键上报失败 (固件可能不支持)");
+        }
     });
+}
+
+void MainWindow::onVoltageChanged(uint16_t /*mv*/)
+{
+    // HUD 整盘 max 电压已废弃; 信号保留以兼容旧绑定, 无副作用.
 }
 
 void MainWindow::onDeviceDisconnected()
 {
+    // 停止按键上报 (设备已断开就不再发指令, 内部已停定时器).
+    if (m_dev) m_dev->stopAutoReport(200);
+    if (m_view) m_view->clearAllVoltages();
+
     // Stop capturing keys while no device is connected.
     m_hook->uninstall();
     m_btnConn->setEnabled(true);
