@@ -50,7 +50,7 @@ extern "C" {
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
 {
-    setWindowTitle("Keyboard Tester V2 — JSON-driven KLE Layout");
+    setWindowTitle("Keyboard Tester V2.2 — JSON-driven KLE Layout");
     resize(1180, 620);
     setMinimumSize(680, 380);
 
@@ -1247,7 +1247,7 @@ void MainWindow::onToggleFnView(bool on)
 // ---------------------------------------------------------------------------
 //  About / Version upgrade
 // ---------------------------------------------------------------------------
-static constexpr const char* kAppVersion = "2.1.0";
+static constexpr const char* kAppVersion = "2.2.0";
 
 void MainWindow::onAbout()
 {
