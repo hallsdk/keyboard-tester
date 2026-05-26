@@ -110,6 +110,9 @@ QHash<int, uint16_t> buildTable()
     add(0x66 + EXT, KC_MARKS);       // Bookmarks
     add(0x67 + EXT, KC_REFRESH);     // Refresh
     add(0x32 + EXT, KC_WWW);         // Browser Home
+    add(0x68 + EXT, KC_AC_STOP);     // Browser Stop
+    add(0x69 + EXT, KC_FORWARD);     // Browser Forward
+    add(0x6A + EXT, KC_AC_BACK);     // Browser Back
     add(0x6C + EXT, KC_EMAIL);       // Mail
     add(0x6B + EXT, KC_PC);          // My Computer / files
     add(0x21 + EXT, KC_CALC);        // Calculator (some kb)
